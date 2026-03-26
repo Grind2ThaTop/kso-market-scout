@@ -3,12 +3,12 @@ import { KSOLogo } from '@/components/KSOLogo';
 import { useApp } from '@/context/AppContext';
 import {
   LayoutDashboard, BarChart3, FlaskConical, BookOpen, Settings, LogOut, ChevronLeft, ChevronRight, Users,
+  LayoutDashboard, FlaskConical, BookOpen, Settings, LogOut, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { useState } from 'react';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/market/m3', icon: BarChart3, label: 'Markets' },
   { to: '/strategy', icon: FlaskConical, label: 'Strategy Lab' },
   { to: '/journal', icon: BookOpen, label: 'Journal' },
   { to: '/smart-money', icon: Users, label: 'Smart Money' },
@@ -41,7 +41,6 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
         <div className="p-2 border-t border-sidebar-border space-y-1">
           <div className={`flex items-center gap-2 px-3 py-1 ${collapsed ? 'justify-center' : ''}`}>
             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-primary/20 text-primary uppercase">{mode}</span>
-            {!collapsed && <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-info/20 text-info">Seeded Data</span>}
           </div>
           <button onClick={() => setCollapsed(!collapsed)} className="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-sidebar-foreground hover:bg-sidebar-accent w-full">
             {collapsed ? <ChevronRight className="w-4 h-4" /> : <><ChevronLeft className="w-4 h-4" /><span>Collapse</span></>}
