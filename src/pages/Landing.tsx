@@ -26,13 +26,13 @@ const Landing = () => {
               <span className="text-primary">Before the Market Catches Up</span>
             </h1>
             <p className="text-muted-foreground text-lg mb-8 max-w-xl mx-auto">
-              Identify mispriced contracts, calculate expected edge after fees, run paper trades, and track performance — all in one terminal.
+              Identify mispriced contracts, scan live quotes, calculate expected edge after costs, and track paper decisions in one workspace.
             </p>
           </motion.div>
 
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2, duration: 0.5 }} className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
             <button onClick={login} className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground font-semibold rounded-md hover:opacity-90 transition-opacity glow-profit">
-              Enter Demo Mode <ArrowRight className="w-4 h-4" />
+              Enter Scanner <ArrowRight className="w-4 h-4" />
             </button>
             <button onClick={login} className="inline-flex items-center gap-2 px-6 py-3 bg-secondary text-secondary-foreground font-medium rounded-md hover:bg-surface-3 transition-colors">
               Sign In
