@@ -33,7 +33,7 @@ const Dashboard = () => {
           { label: 'Buying Power', value: fmt(tradingProfile.paperBuyingPower), icon: Zap, color: 'text-foreground' },
           { label: 'Drawdown', value: fmt(drawdown), icon: TrendingDown, color: drawdown > 100 ? 'text-loss' : 'text-muted-foreground' },
         ].map(({ label, value, icon: Icon, color }) => (
-          <div key={label} className="bg-card border border-border rounded-lg p-3">
+          <div key={label} className="glass-card border border-border rounded-lg p-3 interactive-lift">
             <div className="flex items-center gap-1.5 mb-1">
               <Icon className={`w-3.5 h-3.5 ${color}`} />
               <span className="text-[11px] text-muted-foreground">{label}</span>
@@ -52,7 +52,7 @@ const Dashboard = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Top Signals */}
-        <div className="lg:col-span-2 bg-card border border-border rounded-lg">
+        <div className="lg:col-span-2 glass-card border border-border rounded-lg">
           <div className="px-4 py-3 border-b border-border flex items-center justify-between">
             <h2 className="text-sm font-semibold text-foreground">Top Signals</h2>
             <span className="text-[10px] text-muted-foreground">Ranked by score</span>
@@ -102,7 +102,7 @@ const Dashboard = () => {
         {/* Right column */}
         <div className="space-y-4">
           {/* Today's Plan */}
-          <div className="bg-card border border-border rounded-lg p-4">
+          <div className="glass-card border border-border rounded-lg p-4">
             <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
               <Target className="w-4 h-4 text-primary" /> Today's Plan
             </h2>
@@ -130,7 +130,7 @@ const Dashboard = () => {
           </div>
 
           {/* Market Heatmap Mini */}
-          <div className="bg-card border border-border rounded-lg p-4">
+          <div className="glass-card border border-border rounded-lg p-4">
             <h2 className="text-sm font-semibold text-foreground mb-3">Market Heatmap</h2>
             <div className="grid grid-cols-5 gap-1">
               {markets.slice(0, 15).map(m => {
@@ -138,7 +138,7 @@ const Dashboard = () => {
                 const sig = signals.find(s => s.marketId === m.id);
                 const intensity = sig ? sig.score / 100 : 0.3;
                 return (
-                  <Link key={m.id} to={`/market/${m.id}`} className="aspect-square rounded flex items-center justify-center text-[8px] font-mono font-bold hover:ring-1 ring-primary transition-all" style={{ backgroundColor: `hsl(142 60% 45% / ${intensity * 0.4})`, color: intensity > 0.6 ? 'hsl(142,60%,45%)' : 'hsl(var(--muted-foreground))' }} title={`${m.ticker} — Score: ${sig?.score ?? 'N/A'}`}>
+                  <Link key={m.id} to={`/market/${m.id}`} className="aspect-square rounded flex items-center justify-center text-[8px] font-mono font-bold hover:ring-1 ring-primary transition-all" style={{ backgroundColor: `hsl(var(--primary) / ${intensity * 0.4})`, color: intensity > 0.6 ? 'hsl(var(--primary))' : 'hsl(var(--muted-foreground))' }} title={`${m.ticker} — Score: ${sig?.score ?? 'N/A'}`}>
                     {m.ticker.split('-')[0]}
                   </Link>
                 );
@@ -148,7 +148,7 @@ const Dashboard = () => {
           </div>
 
           {/* Risk Status */}
-          <div className="bg-card border border-border rounded-lg p-4">
+          <div className="glass-card border border-border rounded-lg p-4">
             <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-warn" /> Risk Status
             </h2>
@@ -166,7 +166,7 @@ const Dashboard = () => {
       </div>
 
       {/* Recent Paper Trades */}
-      <div className="bg-card border border-border rounded-lg">
+      <div className="glass-card border border-border rounded-lg">
         <div className="px-4 py-3 border-b border-border">
           <h2 className="text-sm font-semibold text-foreground">Recent Paper Trades</h2>
         </div>

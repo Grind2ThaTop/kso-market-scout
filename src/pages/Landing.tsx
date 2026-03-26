@@ -8,12 +8,12 @@ const Landing = () => {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      <header className="border-b border-border px-6 py-4 flex items-center justify-between">
+      <header className="border-b border-border px-6 py-4 flex items-center justify-between bg-background/70 backdrop-blur">
         <div className="flex items-center gap-3">
           <KSOLogo size={36} />
           <span className="text-lg font-semibold text-foreground">KSO Market Scout</span>
         </div>
-        <button onClick={login} className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity">
+        <button onClick={login} className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity glow-profit">
           Sign In
         </button>
       </header>
@@ -31,7 +31,7 @@ const Landing = () => {
           </motion.div>
 
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2, duration: 0.5 }} className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
-            <button onClick={login} className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground font-semibold rounded-md hover:opacity-90 transition-opacity">
+            <button onClick={login} className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground font-semibold rounded-md hover:opacity-90 transition-opacity glow-profit">
               Enter Demo Mode <ArrowRight className="w-4 h-4" />
             </button>
             <button onClick={login} className="inline-flex items-center gap-2 px-6 py-3 bg-secondary text-secondary-foreground font-medium rounded-md hover:bg-surface-3 transition-colors">
@@ -46,7 +46,7 @@ const Landing = () => {
               { icon: BookOpen, label: 'Paper Trading' },
               { icon: Shield, label: 'Risk Management' },
             ].map(({ icon: Icon, label }) => (
-              <div key={label} className="bg-card border border-border rounded-lg p-4 text-center">
+              <div key={label} className="glass-card border border-border rounded-lg p-4 text-center interactive-lift">
                 <Icon className="w-6 h-6 text-primary mx-auto mb-2" />
                 <span className="text-sm text-foreground font-medium">{label}</span>
               </div>
