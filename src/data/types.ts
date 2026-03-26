@@ -61,7 +61,7 @@ export interface JournalTrade {
   slippage: number;
   realizedPnl: number | null;
   notes: string;
-  mode: 'demo' | 'paper';
+  mode: 'paper';
   timestamp: string;
   status: 'open' | 'closed' | 'stopped';
   category: string;
@@ -99,5 +99,4 @@ export interface Strategy {
   rules: string[];
   enabled: boolean;
   thresholds: Record<string, number>;
-  sampleMetrics: BacktestRun['metrics'];
 }
