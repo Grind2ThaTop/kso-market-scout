@@ -75,6 +75,12 @@ function encryptSecret(secret) {
   return { cipher, iv: iv.toString('hex') };
 }
 
+function encodeSecret(secret, previousValue) {
+  if (!secret) return previousValue;
+  if (MASTER_KEY) return encryptSecret(secret);
+  return { plain: secret };
+}
+
 async function readDb() {
   try {
     const raw = await fs.readFile(DATA_FILE, 'utf8');
@@ -233,13 +239,6 @@ const server = http.createServer(async (req, res) => {
       const walletPrivateKey = cleanInput(body.walletPrivateKey);
       const privateKeyPem = normalizePem(body.privateKeyPem) ?? current.credentials?.privateKeyPem;
 
-      if ((apiSecret || apiPassphrase || walletPrivateKey) && !MASTER_KEY) {
-        return json(res, 400, {
-          error: 'missing_master_key',
-          message: 'INTEGRATIONS_MASTER_KEY must be configured before saving encrypted secrets.',
-        });
-      }
-
       const next = {
         ...current,
         provider,
@@ -256,10 +255,10 @@ const server = http.createServer(async (req, res) => {
         },
         credentials: {
           apiKeyId,
-          apiSecret: apiSecret ? encryptSecret(apiSecret) : current.credentials?.apiSecret,
-          apiPassphrase: apiPassphrase ? encryptSecret(apiPassphrase) : current.credentials?.apiPassphrase,
+          apiSecret: encodeSecret(apiSecret, current.credentials?.apiSecret),
+          apiPassphrase: encodeSecret(apiPassphrase, current.credentials?.apiPassphrase),
           privateKeyPem,
-          walletPrivateKey: walletPrivateKey ? encryptSecret(walletPrivateKey) : current.credentials?.walletPrivateKey,
+          walletPrivateKey: encodeSecret(walletPrivateKey, current.credentials?.walletPrivateKey),
         },
       };
       const test = provider === 'polymarket'
