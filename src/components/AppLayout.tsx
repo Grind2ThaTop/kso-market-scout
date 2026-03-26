@@ -2,8 +2,14 @@ import { useLocation, Link } from 'react-router-dom';
 import { KSOLogo } from '@/components/KSOLogo';
 import { useApp } from '@/context/AppContext';
 import {
-  LayoutDashboard, BarChart3, FlaskConical, BookOpen, Settings, LogOut, ChevronLeft, ChevronRight, Users,
-  LayoutDashboard, FlaskConical, BookOpen, Settings, LogOut, ChevronLeft, ChevronRight,
+  LayoutDashboard,
+  FlaskConical,
+  BookOpen,
+  Settings,
+  LogOut,
+  ChevronLeft,
+  ChevronRight,
+  Users,
 } from 'lucide-react';
 import { useState } from 'react';
 
