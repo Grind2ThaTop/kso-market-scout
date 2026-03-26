@@ -1,11 +1,12 @@
 import http from 'node:http';
-import { createHash, randomBytes, createSign } from 'node:crypto';
+import { constants, createHash, randomBytes, createSign } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
 const PORT = Number(process.env.INTEGRATIONS_PORT ?? 8787);
 const DATA_FILE = path.resolve('server/data/integrations.json');
-const MASTER_KEY = process.env.INTEGRATIONS_MASTER_KEY;
+const MASTER_KEY = process.env.INTEGRATIONS_MASTER_KEY
+  ?? (process.env.NODE_ENV === 'production' ? undefined : 'dev-only-insecure-master-key');
 
 const defaultCaps = {
   polymarket: {
@@ -58,7 +59,7 @@ function cleanInput(value) {
 function normalizePem(value) {
   const trimmed = cleanInput(value);
   if (!trimmed) return undefined;
-  return trimmed.replace(/\\n/g, '\n');
+  return trimmed.replace(/\\n/g, '\n').replace(/\r\n/g, '\n');
 }
 
 function readCredential(integration, field) {
@@ -72,6 +73,12 @@ function encryptSecret(secret) {
   const key = createHash('sha256').update(MASTER_KEY).digest();
   const cipher = createHash('sha256').update(Buffer.concat([key, iv, Buffer.from(secret)])).digest('hex');
   return { cipher, iv: iv.toString('hex') };
+}
+
+function encodeSecret(secret, previousValue) {
+  if (!secret) return previousValue;
+  if (MASTER_KEY) return encryptSecret(secret);
+  return { plain: secret };
 }
 
 async function readDb() {
@@ -128,7 +135,11 @@ function kalshiHeaders(keyId, privateKeyPem, pathWithQuery) {
   const msg = `${timestamp}GET${requestPath}`;
   const sign = createSign('RSA-SHA256');
   sign.update(msg);
-  const signature = sign.sign({ key: privateKeyPem, padding: 6 }).toString('base64');
+  const signature = sign.sign({
+    key: privateKeyPem,
+    padding: constants.RSA_PKCS1_PSS_PADDING,
+    saltLength: constants.RSA_PSS_SALTLEN_DIGEST,
+  }).toString('base64');
   return { 'KALSHI-ACCESS-KEY': keyId, 'KALSHI-ACCESS-SIGNATURE': signature, 'KALSHI-ACCESS-TIMESTAMP': timestamp };
 }
 
@@ -151,7 +162,11 @@ async function testKalshi(integration) {
       const auth = await fetch(`${base}/portfolio/balance`, { headers: h });
       out.authenticated = auth.ok;
       out.tradingEnabled = auth.ok;
-      if (!auth.ok) out.errors.push(`auth_http_${auth.status}`);
+      if (!auth.ok) {
+        const body = await auth.text().catch(() => '');
+        const reason = cleanInput(body)?.slice(0, 200);
+        out.errors.push(`auth_http_${auth.status}${reason ? `_${reason}` : ''}`);
+      }
     } catch (e) { out.errors.push(`auth_signature_${e.message}`); }
   }
 
@@ -224,13 +239,6 @@ const server = http.createServer(async (req, res) => {
       const walletPrivateKey = cleanInput(body.walletPrivateKey);
       const privateKeyPem = normalizePem(body.privateKeyPem) ?? current.credentials?.privateKeyPem;
 
-      if ((apiSecret || apiPassphrase || walletPrivateKey) && !MASTER_KEY) {
-        return json(res, 400, {
-          error: 'missing_master_key',
-          message: 'INTEGRATIONS_MASTER_KEY must be configured before saving encrypted secrets.',
-        });
-      }
-
       const next = {
         ...current,
         provider,
@@ -247,10 +255,10 @@ const server = http.createServer(async (req, res) => {
         },
         credentials: {
           apiKeyId,
-          apiSecret: apiSecret ? encryptSecret(apiSecret) : current.credentials?.apiSecret,
-          apiPassphrase: apiPassphrase ? encryptSecret(apiPassphrase) : current.credentials?.apiPassphrase,
+          apiSecret: encodeSecret(apiSecret, current.credentials?.apiSecret),
+          apiPassphrase: encodeSecret(apiPassphrase, current.credentials?.apiPassphrase),
           privateKeyPem,
-          walletPrivateKey: walletPrivateKey ? encryptSecret(walletPrivateKey) : current.credentials?.walletPrivateKey,
+          walletPrivateKey: encodeSecret(walletPrivateKey, current.credentials?.walletPrivateKey),
         },
       };
       const test = provider === 'polymarket'

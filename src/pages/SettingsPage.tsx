@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Settings as SettingsIcon, Link2, RefreshCw, Shield, Trash2 } from 'lucide-react';
 import { integrationsApi } from '@/integrations/api';
 import { Provider } from '@/integrations/types';
@@ -20,7 +20,7 @@ const PROVIDERS: { id: Provider; title: string; description: string; envs: strin
   },
 ];
 
-const SettingsPage = () => {
+const SettingsPageContent = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [forms, setForms] = useState<Record<Provider, Record<string, string>>>({
@@ -28,7 +28,7 @@ const SettingsPage = () => {
     kalshi: { environment: 'prod', apiKeyId: '', privateKeyPem: '' },
   });
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ['integrations'],
     queryFn: integrationsApi.list,
   });
@@ -94,6 +94,11 @@ const SettingsPage = () => {
       <p className="text-xs text-muted-foreground">Goal: one serious settings panel for Polymarket + Kalshi with real connection tests and fee sync.</p>
 
       {isLoading ? <div className="text-sm text-muted-foreground">Loading integrations…</div> : null}
+      {error ? (
+        <div className="text-xs text-loss bg-loss/10 border border-loss/30 p-2 rounded">
+          Could not reach the integrations API. Make sure <code>server/integrations-server.mjs</code> is running on port 8787, or set <code>VITE_INTEGRATIONS_API_BASE</code>.
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-4">
         {PROVIDERS.map((provider) => {
@@ -161,6 +166,16 @@ const SettingsPage = () => {
         })}
       </div>
     </div>
+  );
+};
+
+const SettingsPage = () => {
+  const [fallbackClient] = useState(() => new QueryClient());
+
+  return (
+    <QueryClientProvider client={fallbackClient}>
+      <SettingsPageContent />
+    </QueryClientProvider>
   );
 };
 
