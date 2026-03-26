@@ -21,7 +21,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
 
   return (
     <div className="min-h-screen bg-background flex">
-      <aside className={`${collapsed ? 'w-16' : 'w-56'} bg-sidebar border-r border-sidebar-border flex flex-col transition-all duration-200 shrink-0`}>
+      <aside className={`${collapsed ? 'w-16' : 'w-56'} bg-sidebar/95 backdrop-blur border-r border-sidebar-border flex flex-col transition-all duration-200 shrink-0`}>
         <div className="p-3 flex items-center gap-2 border-b border-sidebar-border">
           <KSOLogo size={28} />
           {!collapsed && <span className="text-sm font-semibold text-sidebar-accent-foreground truncate">KSO Market Scout</span>}
@@ -30,7 +30,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
           {navItems.map(({ to, icon: Icon, label }) => {
             const active = to === '/' ? pathname === '/' : pathname.startsWith(to);
             return (
-              <Link key={to} to={to} className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${active ? 'bg-sidebar-accent text-sidebar-primary' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}>
+              <Link key={to} to={to} className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${active ? 'bg-sidebar-accent text-sidebar-primary border border-primary/25' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}>
                 <Icon className="w-4 h-4 shrink-0" />
                 {!collapsed && <span>{label}</span>}
               </Link>
