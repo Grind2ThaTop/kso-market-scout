@@ -1,8 +1,9 @@
 import { useParams, Link } from 'react-router-dom';
 import { markets, quotes, signals, generateOrderBook, generatePriceHistory, generateTradePrints, tradingProfile } from '@/data/demoData';
 import { useState, useMemo } from 'react';
-import { ArrowLeft, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, ExternalLink } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { buildOutcomeTradeUrl } from '@/lib/marketUrlBuilder';
 
 const MarketDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -27,7 +28,7 @@ const MarketDetail = () => {
   const suggestedSize = Math.floor(tradingProfile.perTradeRisk / (entryPrice - stopPrice + tradingProfile.feeModel.taker + tradingProfile.slippageModel));
   const [showPlaced, setShowPlaced] = useState(false);
 
-  if (!market || !quote) {
+  if (!market || !quote || !market.market_url) {
     return <div className="flex-1 flex items-center justify-center text-muted-foreground">Market not found</div>;
   }
 
@@ -42,10 +43,19 @@ const MarketDetail = () => {
           <h1 className="text-lg font-bold text-foreground">{market.title}</h1>
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             <span className="font-mono">{market.ticker}</span>
+            <span className="px-1.5 py-0.5 bg-surface-2 rounded uppercase">{market.platform}</span>
             <span className="px-1.5 py-0.5 bg-surface-2 rounded">{market.category}</span>
             <span>Liquidity: {market.liquidityScore}</span>
             <span>Expires: {new Date(market.eventEnd).toLocaleDateString()}</span>
           </div>
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <a href={market.market_url} target="_blank" rel="noreferrer" className="px-3 py-1.5 bg-surface-2 hover:bg-surface-3 rounded text-xs flex items-center gap-1">
+            View Market <ExternalLink className="w-3 h-3" />
+          </a>
+          <a href={buildOutcomeTradeUrl(market, side)} target="_blank" rel="noreferrer" className="px-3 py-1.5 bg-primary text-primary-foreground rounded text-xs">
+            Trade Now
+          </a>
         </div>
       </div>
 
