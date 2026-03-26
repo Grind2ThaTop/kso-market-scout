@@ -1,40 +1,36 @@
 export type Provider = 'polymarket' | 'kalshi';
+export type ProviderStatus = 'disconnected' | 'invalid' | 'connected' | 'rate-limited' | 'degraded';
 
 export interface IntegrationRecord {
   provider: Provider;
-  status: 'connected' | 'disconnected';
-  environment: string;
-  trading_enabled: boolean;
-  market_data_enabled: boolean;
-  fee_sync_enabled: boolean;
-  last_tested_at?: string;
-  last_fee_sync_at?: string;
-  last_successful_connection_at?: string;
-  last_error?: string | null;
-  credentials_metadata?: {
-    apiKeyId_masked?: string | null;
+  enabled: boolean;
+  environment: 'prod' | 'demo';
+  status?: ProviderStatus;
+  credentialsValid?: boolean;
+  lastTestedAt?: string;
+  lastSuccessfulSyncAt?: string;
+  credentialsMetadata?: {
+    apiKey_masked?: string | null;
     hasPrivateKey?: boolean;
     hasApiSecret?: boolean;
     hasApiPassphrase?: boolean;
   };
+  lastError?: string | null;
 }
 
-export interface FeeSnapshot {
+export interface ProviderConnectionTest {
   provider: Provider;
-  maker_fee: number | null;
-  taker_fee: number | null;
-  base_fee: number | null;
-  fee_notes: string;
-  fee_source: string;
-  synced_at: string;
-  raw_payload: unknown;
+  status: ProviderStatus;
+  health: {
+    connected: boolean;
+    degraded: boolean;
+    rateLimited: boolean;
+  };
+  credentialsValid: { valid: boolean };
 }
 
-export interface TestResult {
+export interface ProviderFeeSnapshot {
   provider: Provider;
-  publicMarketData: boolean;
-  authenticated: boolean;
-  feeEndpoint: boolean;
-  tradingEnabled: boolean;
-  errors: string[];
+  syncedAt: string;
+  raw: unknown;
 }

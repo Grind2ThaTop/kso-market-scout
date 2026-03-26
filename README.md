@@ -1,56 +1,82 @@
 # KSO Market Scout
 
-Production-safe prediction market scanner UI using **live market data only**.
+Prediction market scanner UI with rebuilt **Kalshi** and **Polymarket** provider integrations.
 
-## Live data configuration
-
-1. Copy `.env.example` to `.env`.
-2. Set `VITE_MARKET_DATA_URL` to your live market feed endpoint.
-3. Optionally set `VITE_MARKET_DATA_API_KEY` if your provider requires auth.
-4. Start the app with `npm run dev`.
-
-The app expects `VITE_MARKET_DATA_URL` to return one of:
-- `[{...}]`
-- `{ "data": [{...}] }`
-- `{ "markets": [{...}] }`
-
-Each market row should include id/title plus quote fields (`bestYesBid`/`bestYesAsk` or equivalent).
-
-## Integrations API (Polymarket + Kalshi)
-
-This repo now includes a backend integration service at `server/integrations-server.mjs`.
-
-### Run it
+## Run
 
 ```bash
-export INTEGRATIONS_MASTER_KEY='set-a-strong-random-value'
-node server/integrations-server.mjs
+npm install
+INTEGRATIONS_MASTER_KEY='replace-with-random-32+chars' npm run dev
 ```
 
-Default port: `8787`.
+Frontend defaults to `http://localhost:8787` for integration APIs unless `VITE_INTEGRATIONS_API_BASE` is set.
 
-Set frontend API base if needed:
+## New prediction provider architecture
+
+- `PredictionMarketProvider` interface/base class.
+- `KalshiProvider` for Kalshi REST + auth signing.
+- `PolymarketProvider` for public Gamma data and authenticated CLOB trading.
+- Strict request validation via zod.
+- Normalized market model with raw payload preservation.
+- Shared resilience layer: throttling + retry/backoff + circuit breaker.
+
+## Environment variables
+
+### Backend
+- `INTEGRATIONS_PORT` (default `8787`)
+- `INTEGRATIONS_MASTER_KEY` (required for encrypted secret storage)
+
+### Frontend
+- `VITE_INTEGRATIONS_API_BASE` (optional; defaults to same origin)
+- Existing scanner vars (`VITE_MARKET_DATA_URL`, etc.) remain supported.
+
+## Credentials requirements
+
+### Kalshi
+- `apiKeyId`
+- `privateKeyPem`
+- `environment`: `prod` or `demo`
+
+### Polymarket (CLOB trading)
+- `apiKey`
+- `apiSecret`
+- `apiPassphrase`
+- optional `walletAddress`
+
+Public Polymarket market data uses Gamma endpoints and does **not** require wallet auth.
+
+## Demo vs production
+
+- Kalshi supports `prod` and `demo` base URLs.
+- Polymarket is configured for production CLOB and public Gamma endpoints.
+
+## Auth model summary
+
+- **Kalshi**: RSA-PSS signature headers (`KALSHI-ACCESS-*`) on authenticated requests.
+- **Polymarket**: public Gamma reads unauthenticated; trading uses L2 API credentials and HMAC-SHA256 signed headers.
+
+## Endpoints
+
+- `POST /api/prediction-markets/credentials/save`
+- `POST /api/prediction-markets/credentials/test`
+- `POST /api/prediction-markets/sync-account`
+- `GET /api/prediction-markets/markets?provider=...`
+- `GET /api/prediction-markets/positions?provider=...`
+- `GET /api/prediction-markets/orders?provider=...`
+- `POST /api/prediction-markets/orders/place`
+- `POST /api/prediction-markets/orders/cancel`
+- `POST /api/prediction-markets/orders/cancel-all`
+- `GET /api/prediction-markets/realtime?provider=...`
+
+## Smoke scripts
 
 ```bash
-VITE_INTEGRATIONS_API_BASE=http://localhost:8787
+node server/scripts/smoke-polymarket.mjs
+node server/scripts/smoke-kalshi.mjs
 ```
 
-### Capability matrix (implemented)
+## Known limitations
 
-| Provider | Public endpoints | Authenticated endpoints | Credentials | Auth/signing | Fee sync |
-|---|---|---|---|---|---|
-| Polymarket | `GET /markets` on CLOB | Trading paths only if API key/secret/passphrase are configured | API key id, API secret, API passphrase, optional wallet private key | CLOB L2 model expected; app keeps trading disabled unless authenticated config passes provider tests | `GET /fee-rate` |
-| Kalshi | `GET /markets` | `GET /portfolio/balance` for auth validation | API Key ID + RSA private key PEM | `KALSHI-ACCESS-*` headers with RSA signature over timestamp+method+`/trade-api/v2/...` request path | `GET /series/fee_changes` raw payload normalized + preserved |
-
-### Security model
-
-- Secrets are never returned to the UI after save.
-- UI receives masked metadata only.
-- Credentials are stored server-side in `server/data/integrations.json`.
-- Server refuses saving new secrets if `INTEGRATIONS_MASTER_KEY` is missing.
-
-## Current blockers to full go-live
-
-- No live order placement flow is wired yet in the trade ticket.
-- Kalshi fee data is series-level and may require additional per-market mapping logic.
-- Journal and strategy backtest pages require real persistence/backtest services.
+- Real credential validation for private account/trading flows requires valid live keys.
+- Websocket metadata/reconnect scaffolding is present, but channel subscription handlers are intentionally left for runtime-specific wiring.
+- Polymarket L1 wallet-derived key creation flow is not yet automated in this repo; expects pre-generated L2 credentials.

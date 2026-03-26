@@ -1,189 +1,157 @@
 import { useMemo, useState } from 'react';
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Settings as SettingsIcon, Link2, RefreshCw, Shield, Trash2 } from 'lucide-react';
+import { Link2, RefreshCw, Shield } from 'lucide-react';
 import { integrationsApi } from '@/integrations/api';
-import { Provider } from '@/integrations/types';
+import { Provider, ProviderStatus } from '@/integrations/types';
 import { useToast } from '@/hooks/use-toast';
 
-const PROVIDERS: { id: Provider; title: string; description: string; envs: string[] }[] = [
-  {
-    id: 'polymarket',
-    title: 'Polymarket',
-    description: 'Public CLOB market data works without credentials. Trading remains disabled until auth credentials pass test.',
-    envs: ['prod'],
-  },
+const PROVIDERS: { id: Provider; title: string; envs: Array<'prod' | 'demo'>; help: Record<string, string> }[] = [
   {
     id: 'kalshi',
     title: 'Kalshi',
-    description: 'Authenticated access uses Kalshi API Key ID + RSA private key PEM (do not use Polymarket relayer keys).',
     envs: ['prod', 'demo'],
+    help: {
+      apiKeyId: 'Kalshi API Key ID from account API settings.',
+      privateKeyPem: 'RSA private key PEM matching your Kalshi key ID. Supports escaped newlines.',
+    },
+  },
+  {
+    id: 'polymarket',
+    title: 'Polymarket',
+    envs: ['prod'],
+    help: {
+      apiKey: 'Polymarket CLOB L2 API key for signed trading requests.',
+      apiSecret: 'Polymarket CLOB secret used for HMAC-SHA256 signing.',
+      apiPassphrase: 'Polymarket CLOB passphrase paired with API key + secret.',
+      walletAddress: 'Wallet address associated with the CLOB API credentials.',
+    },
   },
 ];
+
+const statusClasses: Record<ProviderStatus, string> = {
+  connected: 'bg-profit/15 text-profit',
+  disconnected: 'bg-muted text-muted-foreground',
+  invalid: 'bg-loss/15 text-loss',
+  degraded: 'bg-warning/15 text-warning',
+  'rate-limited': 'bg-warning/15 text-warning',
+};
 
 const SettingsPageContent = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [forms, setForms] = useState<Record<Provider, Record<string, string>>>({
-    polymarket: { environment: 'prod', apiKeyId: '', apiSecret: '', apiPassphrase: '', walletPrivateKey: '' },
-    kalshi: { environment: 'prod', apiKeyId: '', privateKeyPem: '' },
+  const [forms, setForms] = useState<Record<Provider, Record<string, string | boolean>>>({
+    kalshi: { enabled: true, environment: 'prod', apiKeyId: '', privateKeyPem: '' },
+    polymarket: { enabled: true, environment: 'prod', apiKey: '', apiSecret: '', apiPassphrase: '', walletAddress: '' },
   });
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['integrations'],
-    queryFn: integrationsApi.list,
-  });
+  const { data, isLoading } = useQuery({ queryKey: ['integrations'], queryFn: integrationsApi.list });
 
-  const integrationByProvider = useMemo(() => {
-    const map = new Map<Provider, {
-      provider: Provider;
-      status: 'connected' | 'disconnected';
-      environment: string;
-      trading_enabled: boolean;
-      market_data_enabled: boolean;
-      fee_sync_enabled: boolean;
-      last_tested_at?: string;
-      last_fee_sync_at?: string;
-      last_successful_connection_at?: string;
-      last_error?: string | null;
-      credentials_metadata?: { apiKeyId_masked?: string | null };
-    }>();
-    for (const row of data?.integrations ?? []) map.set(row.provider, row);
+  const integrationMap = useMemo(() => {
+    const map = new Map<Provider, any>();
+    for (const row of data?.providers ?? []) map.set(row.provider, row.integration);
     return map;
   }, [data]);
 
-  const connect = useMutation({
-    mutationFn: ({ provider }: { provider: Provider }) => integrationsApi.connect(provider, forms[provider]),
-    onSuccess: (_, variables) => {
-      toast({ title: `${variables.provider} saved`, description: 'Credentials stored server-side and test executed.' });
+  const save = useMutation({
+    mutationFn: (provider: Provider) => integrationsApi.saveCredentials({
+      provider,
+      enabled: Boolean(forms[provider].enabled),
+      environment: String(forms[provider].environment) as 'prod' | 'demo',
+      credentials: Object.fromEntries(Object.entries(forms[provider]).filter(([k]) => !['enabled', 'environment'].includes(k)).map(([k, v]) => [k, String(v ?? '')])),
+    }),
+    onSuccess: () => {
+      toast({ title: 'Credentials saved' });
       queryClient.invalidateQueries({ queryKey: ['integrations'] });
     },
     onError: (error: Error) => toast({ title: 'Save failed', description: error.message, variant: 'destructive' }),
   });
 
-  const testConnection = useMutation({
-    mutationFn: (provider: Provider) => integrationsApi.test(provider),
+  const test = useMutation({
+    mutationFn: (provider: Provider) => integrationsApi.testCredentials(provider),
     onSuccess: (result) => {
-      toast({ title: `${result.provider} test complete`, description: result.test.errors.length ? result.test.errors.join(', ') : 'All checks passed.' });
+      toast({ title: `${result.provider} connection test`, description: `Status: ${result.status}` });
       queryClient.invalidateQueries({ queryKey: ['integrations'] });
     },
     onError: (error: Error) => toast({ title: 'Test failed', description: error.message, variant: 'destructive' }),
   });
 
-  const syncFees = useMutation({
-    mutationFn: (provider: Provider) => integrationsApi.syncFees(provider),
-    onSuccess: (snapshot) => {
-      toast({ title: `${snapshot.provider} fees synced`, description: `Synced at ${new Date(snapshot.synced_at).toLocaleString()}` });
-      queryClient.invalidateQueries({ queryKey: ['integrations'] });
-    },
-    onError: (error: Error) => toast({ title: 'Fee sync failed', description: error.message, variant: 'destructive' }),
-  });
-
-  const disconnect = useMutation({
-    mutationFn: (provider: Provider) => integrationsApi.remove(provider),
+  const sync = useMutation({
+    mutationFn: (provider: Provider) => integrationsApi.syncAccount(provider),
     onSuccess: () => {
-      toast({ title: 'Integration removed' });
+      toast({ title: 'Account sync complete' });
       queryClient.invalidateQueries({ queryKey: ['integrations'] });
     },
+    onError: (error: Error) => toast({ title: 'Sync failed', description: error.message, variant: 'destructive' }),
   });
 
   return (
     <div className="flex-1 overflow-auto p-4 space-y-4">
-      <h1 className="text-lg font-bold text-foreground flex items-center gap-2">
-        <SettingsIcon className="w-5 h-5 text-primary" /> Integrations / API Keys
-      </h1>
-      <p className="text-xs text-muted-foreground">Goal: one serious settings panel for Polymarket + Kalshi with real connection tests and fee sync.</p>
+      <h1 className="text-lg font-bold text-foreground">Prediction Markets Credentials</h1>
+      <p className="text-xs text-muted-foreground">Separate provider cards for Kalshi and Polymarket (public data + authenticated trading).</p>
+      {isLoading ? <p className="text-xs text-muted-foreground">Loading…</p> : null}
 
-      {isLoading ? <div className="text-sm text-muted-foreground">Loading integrations…</div> : null}
-      {error ? (
-        <div className="text-xs text-loss bg-loss/10 border border-loss/30 p-2 rounded">
-          Could not reach the integrations API. Make sure <code>server/integrations-server.mjs</code> is running on port 8787, or set <code>VITE_INTEGRATIONS_API_BASE</code>.
-        </div>
-      ) : null}
-
-      <div className="grid grid-cols-1 gap-4">
-        {PROVIDERS.map((provider) => {
-          const current = integrationByProvider.get(provider.id);
-          const form = forms[provider.id];
-          return (
-            <div key={provider.id} className="bg-card border border-border rounded-lg p-4 space-y-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-sm font-semibold flex items-center gap-2"><Link2 className="w-4 h-4 text-primary" />{provider.title}</h2>
-                  <p className="text-xs text-muted-foreground mt-1">{provider.description}</p>
-                </div>
-                <span className={`px-2 py-1 rounded text-[10px] uppercase font-bold ${current?.status === 'connected' ? 'bg-profit/15 text-profit' : 'bg-loss/15 text-loss'}`}>{current?.status ?? 'disconnected'}</span>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                <StatusRow label="Trading enabled" value={current?.trading_enabled ? 'yes' : 'no'} />
-                <StatusRow label="Market data enabled" value={current?.market_data_enabled ? 'yes' : 'no'} />
-                <StatusRow label="Fee sync enabled" value={current?.fee_sync_enabled ? 'yes' : 'no'} />
-                <StatusRow label="Last successful connection" value={current?.last_successful_connection_at ? new Date(current.last_successful_connection_at).toLocaleString() : 'N/A'} />
-                <StatusRow label="Last fee sync" value={current?.last_fee_sync_at ? new Date(current.last_fee_sync_at).toLocaleString() : 'N/A'} />
-                <StatusRow label="Masked key" value={current?.credentials_metadata?.apiKeyId_masked ?? 'N/A'} />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <label className="text-xs text-muted-foreground">Environment
-                  <select className="mt-1 w-full bg-surface-2 border border-border rounded px-2 py-2 text-foreground" value={form.environment} onChange={(e) => setForms((prev) => ({ ...prev, [provider.id]: { ...prev[provider.id], environment: e.target.value } }))}>
-                    {provider.envs.map((env) => <option key={env} value={env}>{env}</option>)}
-                  </select>
-                </label>
-
-                <label className="text-xs text-muted-foreground">API Key ID
-                  <input className="mt-1 w-full bg-surface-2 border border-border rounded px-2 py-2 text-foreground" value={form.apiKeyId ?? ''} onChange={(e) => setForms((prev) => ({ ...prev, [provider.id]: { ...prev[provider.id], apiKeyId: e.target.value } }))} />
-                </label>
-
-                {provider.id === 'polymarket' ? (
-                  <>
-                    <label className="text-xs text-muted-foreground">API Secret
-                      <input type="password" className="mt-1 w-full bg-surface-2 border border-border rounded px-2 py-2 text-foreground" value={form.apiSecret ?? ''} onChange={(e) => setForms((prev) => ({ ...prev, polymarket: { ...prev.polymarket, apiSecret: e.target.value } }))} />
-                    </label>
-                    <label className="text-xs text-muted-foreground">API Passphrase
-                      <input type="password" className="mt-1 w-full bg-surface-2 border border-border rounded px-2 py-2 text-foreground" value={form.apiPassphrase ?? ''} onChange={(e) => setForms((prev) => ({ ...prev, polymarket: { ...prev.polymarket, apiPassphrase: e.target.value } }))} />
-                    </label>
-                    <label className="text-xs text-muted-foreground md:col-span-2">Wallet Private Key (optional signer path)
-                      <textarea className="mt-1 w-full bg-surface-2 border border-border rounded px-2 py-2 text-foreground" rows={3} value={form.walletPrivateKey ?? ''} onChange={(e) => setForms((prev) => ({ ...prev, polymarket: { ...prev.polymarket, walletPrivateKey: e.target.value } }))} />
-                    </label>
-                  </>
-                ) : (
-                  <label className="text-xs text-muted-foreground md:col-span-2">RSA Private Key (PEM)
-                    <textarea className="mt-1 w-full bg-surface-2 border border-border rounded px-2 py-2 text-foreground" rows={4} value={form.privateKeyPem ?? ''} onChange={(e) => setForms((prev) => ({ ...prev, kalshi: { ...prev.kalshi, privateKeyPem: e.target.value } }))} />
-                  </label>
-                )}
-              </div>
-
-              {current?.last_error ? <div className="text-xs text-loss bg-loss/10 border border-loss/30 p-2 rounded">Last error: {current.last_error}</div> : null}
-
-              <div className="flex flex-wrap gap-2">
-                <button className="px-3 py-2 rounded bg-primary text-primary-foreground text-xs font-semibold" onClick={() => connect.mutate({ provider: provider.id })}>Save / Reconnect</button>
-                <button className="px-3 py-2 rounded bg-surface-2 text-foreground text-xs font-semibold border border-border" onClick={() => testConnection.mutate(provider.id)}><Shield className="w-3 h-3 inline mr-1" />Test Connection</button>
-                <button className="px-3 py-2 rounded bg-surface-2 text-foreground text-xs font-semibold border border-border" onClick={() => syncFees.mutate(provider.id)}><RefreshCw className="w-3 h-3 inline mr-1" />Sync Fees</button>
-                <button className="px-3 py-2 rounded bg-loss/15 text-loss text-xs font-semibold" onClick={() => disconnect.mutate(provider.id)}><Trash2 className="w-3 h-3 inline mr-1" />Remove</button>
-              </div>
+      {PROVIDERS.map((provider) => {
+        const current = integrationMap.get(provider.id);
+        const status = (current?.status ?? 'disconnected') as ProviderStatus;
+        return (
+          <div key={provider.id} className="bg-card border border-border rounded-lg p-4 space-y-4">
+            <div className="flex justify-between items-start">
+              <h2 className="text-sm font-semibold flex items-center gap-2"><Link2 className="w-4 h-4" /> {provider.title}</h2>
+              <span className={`px-2 py-1 rounded text-[10px] uppercase font-bold ${statusClasses[status]}`}>{status}</span>
             </div>
-          );
-        })}
-      </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <label className="text-xs">Enabled
+                <select className="mt-1 w-full border rounded px-2 py-2 bg-surface-2" value={String(forms[provider.id].enabled)} onChange={(e) => setForms((prev) => ({ ...prev, [provider.id]: { ...prev[provider.id], enabled: e.target.value === 'true' } }))}>
+                  <option value="true">true</option>
+                  <option value="false">false</option>
+                </select>
+              </label>
+              <label className="text-xs">Environment
+                <select className="mt-1 w-full border rounded px-2 py-2 bg-surface-2" value={String(forms[provider.id].environment)} onChange={(e) => setForms((prev) => ({ ...prev, [provider.id]: { ...prev[provider.id], environment: e.target.value } }))}>
+                  {provider.envs.map((env) => <option key={env} value={env}>{env}</option>)}
+                </select>
+              </label>
+
+              {provider.id === 'kalshi' ? (
+                <>
+                  <InputField label="API Key ID" help={provider.help.apiKeyId} value={String(forms.kalshi.apiKeyId ?? '')} onChange={(v) => setForms((p) => ({ ...p, kalshi: { ...p.kalshi, apiKeyId: v } }))} />
+                  <TextAreaField label="RSA Private Key (PEM)" help={provider.help.privateKeyPem} value={String(forms.kalshi.privateKeyPem ?? '')} onChange={(v) => setForms((p) => ({ ...p, kalshi: { ...p.kalshi, privateKeyPem: v } }))} />
+                </>
+              ) : (
+                <>
+                  <InputField label="API Key" help={provider.help.apiKey} value={String(forms.polymarket.apiKey ?? '')} onChange={(v) => setForms((p) => ({ ...p, polymarket: { ...p.polymarket, apiKey: v } }))} />
+                  <InputField label="Wallet Address" help={provider.help.walletAddress} value={String(forms.polymarket.walletAddress ?? '')} onChange={(v) => setForms((p) => ({ ...p, polymarket: { ...p.polymarket, walletAddress: v } }))} />
+                  <InputField label="API Secret" type="password" help={provider.help.apiSecret} value={String(forms.polymarket.apiSecret ?? '')} onChange={(v) => setForms((p) => ({ ...p, polymarket: { ...p.polymarket, apiSecret: v } }))} />
+                  <InputField label="API Passphrase" type="password" help={provider.help.apiPassphrase} value={String(forms.polymarket.apiPassphrase ?? '')} onChange={(v) => setForms((p) => ({ ...p, polymarket: { ...p.polymarket, apiPassphrase: v } }))} />
+                </>
+              )}
+            </div>
+
+            <div className="text-xs text-muted-foreground">Last successful sync: {current?.lastSuccessfulSyncAt ? new Date(current.lastSuccessfulSyncAt).toLocaleString() : 'N/A'}</div>
+            {current?.lastError ? <div className="text-xs text-loss">Last error: {current.lastError}</div> : null}
+
+            <div className="flex gap-2">
+              <button className="px-3 py-2 rounded bg-primary text-primary-foreground text-xs font-semibold" onClick={() => save.mutate(provider.id)}>Save credentials</button>
+              <button className="px-3 py-2 rounded border text-xs" onClick={() => test.mutate(provider.id)}><Shield className="w-3 h-3 inline mr-1" />Test connection</button>
+              <button className="px-3 py-2 rounded border text-xs" onClick={() => sync.mutate(provider.id)}><RefreshCw className="w-3 h-3 inline mr-1" />Sync account</button>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 };
 
-const SettingsPage = () => {
-  const [fallbackClient] = useState(() => new QueryClient());
+function InputField({ label, value, onChange, help, type = 'text' }: { label: string; value: string; onChange: (value: string) => void; help?: string; type?: string; }) {
+  return <label className="text-xs">{label}<input type={type} className="mt-1 w-full border rounded px-2 py-2 bg-surface-2" value={value} onChange={(e) => onChange(e.target.value)} /><span className="block mt-1 text-[10px] text-muted-foreground">{help}</span></label>;
+}
 
-  return (
-    <QueryClientProvider client={fallbackClient}>
-      <SettingsPageContent />
-    </QueryClientProvider>
-  );
-};
+function TextAreaField({ label, value, onChange, help }: { label: string; value: string; onChange: (value: string) => void; help?: string; }) {
+  return <label className="text-xs md:col-span-2">{label}<textarea className="mt-1 w-full border rounded px-2 py-2 bg-surface-2" rows={4} value={value} onChange={(e) => onChange(e.target.value)} /><span className="block mt-1 text-[10px] text-muted-foreground">{help}</span></label>;
+}
 
-const StatusRow = ({ label, value }: { label: string; value: string }) => (
-  <div className="flex items-center justify-between bg-surface-2 rounded p-2">
-    <span className="text-muted-foreground">{label}</span>
-    <span className="font-mono text-foreground">{value}</span>
-  </div>
-);
-
-export default SettingsPage;
+export default function SettingsPage() {
+  const [client] = useState(() => new QueryClient());
+  return <QueryClientProvider client={client}><SettingsPageContent /></QueryClientProvider>;
+}
