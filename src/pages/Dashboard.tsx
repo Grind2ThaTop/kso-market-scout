@@ -1,11 +1,16 @@
 import { tradingProfile, journalTrades, signals, quotes, markets } from '@/data/demoData';
 import { Link } from 'react-router-dom';
-import { TrendingUp, TrendingDown, Target, AlertTriangle, DollarSign, Activity, Zap, Clock } from 'lucide-react';
+import { TrendingUp, TrendingDown, Target, AlertTriangle, DollarSign, Activity, Zap, ExternalLink } from 'lucide-react';
+import { buildOutcomeTradeUrl } from '@/lib/marketUrlBuilder';
 
 const fmt = (n: number) => `$${n.toFixed(0)}`;
 const fmtC = (n: number) => `${(n * 100).toFixed(1)}¢`;
 
 const Dashboard = () => {
+  const actionableMarkets = markets.filter((market) => market.market_url);
+  const unlinkedMarketIds = new Set(markets.filter((market) => !market.market_url).map((market) => market.id));
+  const actionableSignals = signals.filter((signal) => !unlinkedMarketIds.has(signal.marketId));
+
   const closedToday = journalTrades.filter(t => t.status === 'closed');
   const openTrades = journalTrades.filter(t => t.status === 'open');
   const realizedPnl = closedToday.reduce((s, t) => s + (t.realizedPnl ?? 0), 0);
@@ -15,7 +20,7 @@ const Dashboard = () => {
     return s + (q.bestYesBid - t.entryPrice) * t.size;
   }, 0);
   const remaining = tradingProfile.dailyTarget - realizedPnl;
-  const avgEdge = signals.filter(s => s.action !== 'wait').reduce((s, sig) => s + sig.expectedNetEdge, 0) / signals.filter(s => s.action !== 'wait').length;
+  const avgEdge = actionableSignals.filter(s => s.action !== 'wait').reduce((s, sig) => s + sig.expectedNetEdge, 0) / actionableSignals.filter(s => s.action !== 'wait').length;
   const tradesNeeded = Math.ceil(remaining / (avgEdge * 30));
   const drawdown = journalTrades.filter(t => t.status === 'stopped').reduce((s, t) => s + Math.abs(t.realizedPnl ?? 0), 0);
   const killSwitch = drawdown >= tradingProfile.maxDailyLoss;
@@ -61,19 +66,24 @@ const Dashboard = () => {
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-border text-muted-foreground">
-                  {['Market', 'Setup', 'Bid/Ask', 'Spread', 'Score', 'Net Edge', 'Conf', 'Time', 'Action'].map(h => (
+                  {['Market', 'Platform', 'Setup', 'Bid/Ask', 'Spread', 'Score', 'Net Edge', 'Conf', 'Time', 'Trade'].map(h => (
                     <th key={h} className="px-3 py-2 text-left font-medium">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {signals.map(sig => {
+                {actionableSignals.map(sig => {
                   const mkt = markets.find(m => m.id === sig.marketId);
                   const qt = quotes.find(q => q.marketId === sig.marketId);
+                  if (!mkt?.market_url || !qt) return null;
+
                   return (
                     <tr key={sig.id} className="border-b border-border/50 hover:bg-surface-2 transition-colors">
                       <td className="px-3 py-2">
                         <Link to={`/market/${sig.marketId}`} className="text-accent hover:underline font-medium">{mkt?.ticker}</Link>
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className="px-1.5 py-0.5 bg-surface-2 rounded uppercase text-[10px]">{mkt.platform}</span>
                       </td>
                       <td className="px-3 py-2 text-muted-foreground">{sig.setupType}</td>
                       <td className="px-3 py-2 font-mono">
@@ -87,9 +97,24 @@ const Dashboard = () => {
                       <td className="px-3 py-2">{sig.confidence}%</td>
                       <td className="px-3 py-2 text-muted-foreground">{sig.timeToExpiry}</td>
                       <td className="px-3 py-2">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${sig.action === 'wait' ? 'bg-muted text-muted-foreground' : sig.action === 'paper_buy_yes' ? 'bg-profit/15 text-profit' : 'bg-loss/15 text-loss'}`}>
-                          {sig.action.replace('paper_', '').replace('_', ' ')}
-                        </span>
+                        <div className="flex items-center gap-1">
+                          <a
+                            href={buildOutcomeTradeUrl(mkt, 'yes')}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="px-2 py-0.5 rounded text-[10px] font-bold bg-profit/15 text-profit hover:bg-profit/25"
+                          >
+                            YES
+                          </a>
+                          <a
+                            href={buildOutcomeTradeUrl(mkt, 'no')}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="px-2 py-0.5 rounded text-[10px] font-bold bg-loss/15 text-loss hover:bg-loss/25"
+                          >
+                            NO
+                          </a>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -133,14 +158,21 @@ const Dashboard = () => {
           <div className="glass-card border border-border rounded-lg p-4">
             <h2 className="text-sm font-semibold text-foreground mb-3">Market Heatmap</h2>
             <div className="grid grid-cols-5 gap-1">
-              {markets.slice(0, 15).map(m => {
-                const qt = quotes.find(q => q.marketId === m.id);
+              {actionableMarkets.slice(0, 15).map(m => {
                 const sig = signals.find(s => s.marketId === m.id);
                 const intensity = sig ? sig.score / 100 : 0.3;
                 return (
-                  <Link key={m.id} to={`/market/${m.id}`} className="aspect-square rounded flex items-center justify-center text-[8px] font-mono font-bold hover:ring-1 ring-primary transition-all" style={{ backgroundColor: `hsl(var(--primary) / ${intensity * 0.4})`, color: intensity > 0.6 ? 'hsl(var(--primary))' : 'hsl(var(--muted-foreground))' }} title={`${m.ticker} — Score: ${sig?.score ?? 'N/A'}`}>
+                  <a
+                    key={m.id}
+                    href={m.market_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="aspect-square rounded flex items-center justify-center text-[8px] font-mono font-bold hover:ring-1 ring-primary transition-all cursor-pointer"
+                    style={{ backgroundColor: `hsl(var(--primary) / ${intensity * 0.4})`, color: intensity > 0.6 ? 'hsl(var(--primary))' : 'hsl(var(--muted-foreground))' }}
+                    title={`View on ${m.platform} — ${m.ticker}`}
+                  >
                     {m.ticker.split('-')[0]}
-                  </Link>
+                  </a>
                 );
               })}
             </div>
@@ -183,7 +215,22 @@ const Dashboard = () => {
               {journalTrades.map(t => (
                 <tr key={t.id} className="border-b border-border/50 hover:bg-surface-2">
                   <td className="px-3 py-2 text-muted-foreground font-mono">{new Date(t.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
-                  <td className="px-3 py-2"><Link to={`/market/${t.marketId}`} className="text-accent hover:underline">{t.marketTitle}</Link></td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <Link to={`/market/${t.marketId}`} className="text-accent hover:underline">{t.marketTitle}</Link>
+                      {markets.find((m) => m.id === t.marketId)?.market_url && (
+                        <a
+                          href={markets.find((m) => m.id === t.marketId)?.market_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-muted-foreground hover:text-foreground"
+                          title="View live market"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-3 py-2"><span className="px-1.5 py-0.5 bg-surface-2 rounded text-[10px]">{t.setupType}</span></td>
                   <td className="px-3 py-2 font-mono">{t.entryPrice.toFixed(2)}</td>
                   <td className="px-3 py-2 font-mono">{t.exitPrice?.toFixed(2) ?? '—'}</td>

@@ -1,4 +1,5 @@
 import { Market, QuoteSnapshot, Signal, JournalTrade, BacktestRun, TradingProfile, Strategy, OrderBookLevel, TradePrint } from './types';
+import { buildMarketUrl } from '@/lib/marketUrlBuilder';
 
 export const tradingProfile: TradingProfile = {
   dailyTarget: 500,
@@ -9,33 +10,43 @@ export const tradingProfile: TradingProfile = {
   paperBuyingPower: 5000,
 };
 
-export const markets: Market[] = [
-  { id: 'm1', ticker: 'NBA-LAL-BOS', title: 'Lakers vs Celtics - Lakers Win', category: 'sports', eventEnd: '2026-03-24T23:00:00Z', settlementRules: 'Settles YES if LAL wins', liquidityScore: 87 },
-  { id: 'm2', ticker: 'PRES-APPROVAL', title: 'Presidential Approval > 50% by April', category: 'politics', eventEnd: '2026-04-01T00:00:00Z', settlementRules: 'Gallup poll avg', liquidityScore: 92 },
-  { id: 'm3', ticker: 'FED-RATE-HOLD', title: 'Fed Holds Rate in April Meeting', category: 'economics', eventEnd: '2026-04-15T18:00:00Z', settlementRules: 'FOMC statement', liquidityScore: 95 },
-  { id: 'm4', ticker: 'HURR-ATLANTIC', title: 'Atlantic Hurricane Before May 1', category: 'weather', eventEnd: '2026-05-01T00:00:00Z', settlementRules: 'NHC named storm', liquidityScore: 45 },
-  { id: 'm5', ticker: 'OSCAR-BEST', title: 'Film X Wins Best Picture', category: 'culture', eventEnd: '2026-03-28T03:00:00Z', settlementRules: 'Academy announcement', liquidityScore: 78 },
-  { id: 'm6', ticker: 'NFL-DRAFT-QB', title: 'QB Selected #1 Overall in Draft', category: 'sports', eventEnd: '2026-04-25T00:00:00Z', settlementRules: 'NFL draft pick', liquidityScore: 82 },
-  { id: 'm7', ticker: 'CPI-ABOVE-3', title: 'March CPI Above 3.0%', category: 'economics', eventEnd: '2026-04-10T12:30:00Z', settlementRules: 'BLS release', liquidityScore: 91 },
-  { id: 'm8', ticker: 'MAYOR-NYC', title: 'NYC Mayor Approval Drops Below 30%', category: 'politics', eventEnd: '2026-04-15T00:00:00Z', settlementRules: 'Quinnipiac poll', liquidityScore: 58 },
-  { id: 'm9', ticker: 'SNOW-NYC-APR', title: 'NYC Snow Accumulation in April', category: 'weather', eventEnd: '2026-04-30T00:00:00Z', settlementRules: 'NWS Central Park station', liquidityScore: 35 },
-  { id: 'm10', ticker: 'GRAMMY-ALBUM', title: 'Artist Y Wins Album of Year', category: 'culture', eventEnd: '2026-04-05T00:00:00Z', settlementRules: 'Grammy ceremony', liquidityScore: 72 },
-  { id: 'm11', ticker: 'BTC-80K', title: 'Bitcoin Above $80K by April 1', category: 'economics', eventEnd: '2026-04-01T00:00:00Z', settlementRules: 'CoinGecko avg', liquidityScore: 94 },
-  { id: 'm12', ticker: 'UEFA-FINAL', title: 'Real Madrid Wins UCL Final', category: 'sports', eventEnd: '2026-05-30T00:00:00Z', settlementRules: 'UEFA result', liquidityScore: 88 },
-  { id: 'm13', ticker: 'SENATE-VOTE', title: 'Senate Passes Infrastructure Bill', category: 'politics', eventEnd: '2026-04-20T00:00:00Z', settlementRules: 'Senate roll call', liquidityScore: 65 },
-  { id: 'm14', ticker: 'TEMP-RECORD', title: 'US Breaks March Temp Record', category: 'weather', eventEnd: '2026-03-31T00:00:00Z', settlementRules: 'NOAA data', liquidityScore: 42 },
-  { id: 'm15', ticker: 'STREAM-100M', title: 'New Series Hits 100M Views Week 1', category: 'culture', eventEnd: '2026-04-07T00:00:00Z', settlementRules: 'Netflix official report', liquidityScore: 68 },
-  { id: 'm16', ticker: 'SPX-5500', title: 'S&P 500 Closes Above 5500 This Week', category: 'economics', eventEnd: '2026-03-28T20:00:00Z', settlementRules: 'NYSE close', liquidityScore: 96 },
-  { id: 'm17', ticker: 'MLB-OPENER', title: 'Yankees Win Opening Day', category: 'sports', eventEnd: '2026-03-27T00:00:00Z', settlementRules: 'MLB result', liquidityScore: 75 },
-  { id: 'm18', ticker: 'GOV-SHUTDOWN', title: 'Government Shutdown Before May', category: 'politics', eventEnd: '2026-04-30T00:00:00Z', settlementRules: 'OMB designation', liquidityScore: 70 },
-  { id: 'm19', ticker: 'TORNADO-APR', title: 'F3+ Tornado in April', category: 'weather', eventEnd: '2026-04-30T00:00:00Z', settlementRules: 'SPC reports', liquidityScore: 40 },
-  { id: 'm20', ticker: 'GAME-SALES', title: 'New Game Sells 10M Copies Week 1', category: 'culture', eventEnd: '2026-04-14T00:00:00Z', settlementRules: 'Publisher report', liquidityScore: 55 },
-  { id: 'm21', ticker: 'GOLD-3K', title: 'Gold Futures Above $3000', category: 'economics', eventEnd: '2026-04-01T00:00:00Z', settlementRules: 'COMEX settle', liquidityScore: 89 },
-  { id: 'm22', ticker: 'NCAA-CHAMP', title: 'Duke Wins NCAA Tournament', category: 'sports', eventEnd: '2026-04-07T00:00:00Z', settlementRules: 'NCAA final', liquidityScore: 83 },
-  { id: 'm23', ticker: 'TREATY-SIGN', title: 'Trade Treaty Signed by April', category: 'politics', eventEnd: '2026-04-30T00:00:00Z', settlementRules: 'State dept', liquidityScore: 38 },
-  { id: 'm24', ticker: 'RAIN-LA', title: 'LA Gets >1 inch Rain This Week', category: 'weather', eventEnd: '2026-03-30T00:00:00Z', settlementRules: 'NWS LAX station', liquidityScore: 48 },
-  { id: 'm25', ticker: 'BOOK-BEST', title: 'Novel Z Hits #1 NYT Bestseller', category: 'culture', eventEnd: '2026-04-06T00:00:00Z', settlementRules: 'NYT list', liquidityScore: 52 },
+const rawMarkets: Omit<Market, 'market_url'>[] = [
+  { id: 'm1', ticker: 'NBA-LAL-BOS', title: 'Lakers vs Celtics - Lakers Win', platform: 'polymarket', marketSlug: 'lakers-vs-celtics-lakers-win', category: 'sports', eventEnd: '2026-03-24T23:00:00Z', settlementRules: 'Settles YES if LAL wins', liquidityScore: 87 },
+  { id: 'm2', ticker: 'PRES-APPROVAL', title: 'Presidential Approval > 50% by April', platform: 'kalshi', eventSlug: 'politics', marketSlug: 'presidential-approval-over-50-april', category: 'politics', eventEnd: '2026-04-01T00:00:00Z', settlementRules: 'Gallup poll avg', liquidityScore: 92 },
+  { id: 'm3', ticker: 'FED-RATE-HOLD', title: 'Fed Holds Rate in April Meeting', platform: 'polymarket', marketSlug: 'fed-holds-rate-april', category: 'economics', eventEnd: '2026-04-15T18:00:00Z', settlementRules: 'FOMC statement', liquidityScore: 95 },
+  { id: 'm4', ticker: 'HURR-ATLANTIC', title: 'Atlantic Hurricane Before May 1', platform: 'kalshi', eventSlug: 'weather', marketSlug: 'atlantic-hurricane-before-may', category: 'weather', eventEnd: '2026-05-01T00:00:00Z', settlementRules: 'NHC named storm', liquidityScore: 45 },
+  { id: 'm5', ticker: 'OSCAR-BEST', title: 'Film X Wins Best Picture', platform: 'polymarket', marketSlug: 'film-x-wins-best-picture', category: 'culture', eventEnd: '2026-03-28T03:00:00Z', settlementRules: 'Academy announcement', liquidityScore: 78 },
+  { id: 'm6', ticker: 'NFL-DRAFT-QB', title: 'QB Selected #1 Overall in Draft', platform: 'kalshi', eventSlug: 'sports', marketSlug: 'nfl-draft-qb-selected-first', category: 'sports', eventEnd: '2026-04-25T00:00:00Z', settlementRules: 'NFL draft pick', liquidityScore: 82 },
+  { id: 'm7', ticker: 'CPI-ABOVE-3', title: 'March CPI Above 3.0%', platform: 'polymarket', marketSlug: 'march-cpi-above-3-percent', category: 'economics', eventEnd: '2026-04-10T12:30:00Z', settlementRules: 'BLS release', liquidityScore: 91 },
+  { id: 'm8', ticker: 'MAYOR-NYC', title: 'NYC Mayor Approval Drops Below 30%', platform: 'kalshi', eventSlug: 'politics', marketSlug: 'nyc-mayor-approval-below-30', category: 'politics', eventEnd: '2026-04-15T00:00:00Z', settlementRules: 'Quinnipiac poll', liquidityScore: 58 },
+  { id: 'm9', ticker: 'SNOW-NYC-APR', title: 'NYC Snow Accumulation in April', platform: 'polymarket', marketSlug: 'nyc-snow-accumulation-april', category: 'weather', eventEnd: '2026-04-30T00:00:00Z', settlementRules: 'NWS Central Park station', liquidityScore: 35 },
+  { id: 'm10', ticker: 'GRAMMY-ALBUM', title: 'Artist Y Wins Album of Year', platform: 'kalshi', eventSlug: 'culture', marketSlug: 'artist-y-wins-album-of-year', category: 'culture', eventEnd: '2026-04-05T00:00:00Z', settlementRules: 'Grammy ceremony', liquidityScore: 72 },
+  { id: 'm11', ticker: 'BTC-80K', title: 'Bitcoin Above $80K by April 1', platform: 'polymarket', marketSlug: 'bitcoin-above-80k-by-april-1', category: 'economics', eventEnd: '2026-04-01T00:00:00Z', settlementRules: 'CoinGecko avg', liquidityScore: 94 },
+  { id: 'm12', ticker: 'UEFA-FINAL', title: 'Real Madrid Wins UCL Final', platform: 'kalshi', eventSlug: 'sports', marketSlug: 'real-madrid-wins-ucl-final', category: 'sports', eventEnd: '2026-05-30T00:00:00Z', settlementRules: 'UEFA result', liquidityScore: 88 },
+  { id: 'm13', ticker: 'SENATE-VOTE', title: 'Senate Passes Infrastructure Bill', platform: 'polymarket', marketSlug: 'senate-passes-infrastructure-bill', category: 'politics', eventEnd: '2026-04-20T00:00:00Z', settlementRules: 'Senate roll call', liquidityScore: 65 },
+  { id: 'm14', ticker: 'TEMP-RECORD', title: 'US Breaks March Temp Record', platform: 'kalshi', eventSlug: 'weather', marketSlug: 'us-breaks-march-temperature-record', category: 'weather', eventEnd: '2026-03-31T00:00:00Z', settlementRules: 'NOAA data', liquidityScore: 42 },
+  { id: 'm15', ticker: 'STREAM-100M', title: 'New Series Hits 100M Views Week 1', platform: 'polymarket', marketSlug: 'new-series-hits-100m-views-week-1', category: 'culture', eventEnd: '2026-04-07T00:00:00Z', settlementRules: 'Netflix official report', liquidityScore: 68 },
+  { id: 'm16', ticker: 'SPX-5500', title: 'S&P 500 Closes Above 5500 This Week', platform: 'kalshi', eventSlug: 'economics', marketSlug: 'spx-closes-above-5500-this-week', category: 'economics', eventEnd: '2026-03-28T20:00:00Z', settlementRules: 'NYSE close', liquidityScore: 96 },
+  { id: 'm17', ticker: 'MLB-OPENER', title: 'Yankees Win Opening Day', platform: 'polymarket', marketSlug: 'yankees-win-opening-day', category: 'sports', eventEnd: '2026-03-27T00:00:00Z', settlementRules: 'MLB result', liquidityScore: 75 },
+  { id: 'm18', ticker: 'GOV-SHUTDOWN', title: 'Government Shutdown Before May', platform: 'kalshi', eventSlug: 'politics', marketSlug: 'government-shutdown-before-may', category: 'politics', eventEnd: '2026-04-30T00:00:00Z', settlementRules: 'OMB designation', liquidityScore: 70 },
+  { id: 'm19', ticker: 'TORNADO-APR', title: 'F3+ Tornado in April', platform: 'polymarket', marketSlug: 'f3-plus-tornado-in-april', category: 'weather', eventEnd: '2026-04-30T00:00:00Z', settlementRules: 'SPC reports', liquidityScore: 40 },
+  { id: 'm20', ticker: 'GAME-SALES', title: 'New Game Sells 10M Copies Week 1', platform: 'kalshi', eventSlug: 'culture', marketSlug: 'new-game-sells-10m-week-1', category: 'culture', eventEnd: '2026-04-14T00:00:00Z', settlementRules: 'Publisher report', liquidityScore: 55 },
+  { id: 'm21', ticker: 'GOLD-3K', title: 'Gold Futures Above $3000', platform: 'polymarket', marketSlug: 'gold-futures-above-3000', category: 'economics', eventEnd: '2026-04-01T00:00:00Z', settlementRules: 'COMEX settle', liquidityScore: 89 },
+  { id: 'm22', ticker: 'NCAA-CHAMP', title: 'Duke Wins NCAA Tournament', platform: 'kalshi', eventSlug: 'sports', marketSlug: 'duke-wins-ncaa-tournament', category: 'sports', eventEnd: '2026-04-07T00:00:00Z', settlementRules: 'NCAA final', liquidityScore: 83 },
+  { id: 'm23', ticker: 'TREATY-SIGN', title: 'Trade Treaty Signed by April', platform: 'polymarket', marketSlug: 'trade-treaty-signed-by-april', category: 'politics', eventEnd: '2026-04-30T00:00:00Z', settlementRules: 'State dept', liquidityScore: 38 },
+  { id: 'm24', ticker: 'RAIN-LA', title: 'LA Gets >1 inch Rain This Week', platform: 'kalshi', eventSlug: 'weather', marketSlug: 'la-gets-over-one-inch-rain-this-week', category: 'weather', eventEnd: '2026-03-30T00:00:00Z', settlementRules: 'NWS LAX station', liquidityScore: 48 },
+  { id: 'm25', ticker: 'BOOK-BEST', title: 'Novel Z Hits #1 NYT Bestseller', platform: 'polymarket', marketSlug: 'novel-z-hits-nyt-bestseller', category: 'culture', eventEnd: '2026-04-06T00:00:00Z', settlementRules: 'NYT list', liquidityScore: 52 },
 ];
+
+export const markets: Market[] = rawMarkets.flatMap((market) => {
+  const market_url = buildMarketUrl(market);
+  if (!market_url) {
+    console.warn(`[market-url] unable to build link for ${market.id} (${market.platform})`);
+    return [];
+  }
+
+  return [{ ...market, market_url }];
+});
 
 const q = (mid: string, yb: number, ya: number): QuoteSnapshot => ({
   marketId: mid,
