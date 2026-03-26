@@ -15,7 +15,7 @@ const PROVIDERS: { id: Provider; title: string; description: string; envs: strin
   {
     id: 'kalshi',
     title: 'Kalshi',
-    description: 'Authenticated access uses API Key ID + RSA private key signed headers.',
+    description: 'Authenticated access uses Kalshi API Key ID + RSA private key PEM (do not use Polymarket relayer keys).',
     envs: ['prod', 'demo'],
   },
 ];

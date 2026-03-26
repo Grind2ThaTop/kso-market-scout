@@ -116,9 +116,16 @@ async function testPolymarket(integration) {
   return out;
 }
 
+function buildKalshiRequestPath(pathWithQuery) {
+  const trimmed = cleanInput(pathWithQuery) ?? '/';
+  if (trimmed.startsWith('/trade-api/')) return trimmed;
+  return `/trade-api/v2${trimmed.startsWith('/') ? trimmed : `/${trimmed}`}`;
+}
+
 function kalshiHeaders(keyId, privateKeyPem, pathWithQuery) {
   const timestamp = `${Date.now()}`;
-  const msg = `${timestamp}GET${pathWithQuery}`;
+  const requestPath = buildKalshiRequestPath(pathWithQuery);
+  const msg = `${timestamp}GET${requestPath}`;
   const sign = createSign('RSA-SHA256');
   sign.update(msg);
   const signature = sign.sign({ key: privateKeyPem, padding: 6 }).toString('base64');
