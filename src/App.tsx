@@ -9,6 +9,8 @@ import MarketDetail from "@/pages/MarketDetail";
 import StrategyLab from "@/pages/StrategyLab";
 import Journal from "@/pages/Journal";
 import SettingsPage from "@/pages/SettingsPage";
+import SmartMoneyTracker from "@/pages/SmartMoneyTracker";
+import TraderProfilePage from "@/pages/TraderProfilePage";
 import AppLayout from "@/components/AppLayout";
 import NotFound from "@/pages/NotFound";
 
@@ -27,6 +29,8 @@ const AppRoutes = () => {
         <Route path="/strategy" element={<StrategyLab />} />
         <Route path="/journal" element={<Journal />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/smart-money" element={<SmartMoneyTracker />} />
+        <Route path="/smart-money/trader/:traderId" element={<TraderProfilePage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </AppLayout>
