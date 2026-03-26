@@ -2,13 +2,14 @@ import { useParams, Link } from 'react-router-dom';
 import { useState } from 'react';
 import { ArrowLeft, AlertTriangle } from 'lucide-react';
 import { useMarketScanner } from '@/hooks/useMarketScanner';
-import { scannerConfig } from '@/data/liveApi';
+import { useIntegratedFeeModel } from '@/integrations/useIntegratedFeeModel';
 
 const MarketDetail = () => {
   const { id } = useParams<{ id: string }>();
   const { data, isLoading, isError, error } = useMarketScanner();
 
   const [side, setSide] = useState<'yes' | 'no'>('yes');
+  const { data: feeModel } = useIntegratedFeeModel();
   const [size, setSize] = useState(25);
   const [showPlaced, setShowPlaced] = useState(false);
 
@@ -26,9 +27,11 @@ const MarketDetail = () => {
   const entryPrice = side === 'yes' ? quote.bestYesAsk : quote.bestNoAsk;
   const targetExit = Math.min(0.99, entryPrice + 0.06);
   const stopPrice = Math.max(0.01, entryPrice - 0.04);
-  const fees = size * scannerConfig.profile.feeModel.taker;
-  const slippage = size * scannerConfig.profile.slippageModel;
-  const netEdgePerContract = targetExit - entryPrice - scannerConfig.profile.feeModel.taker - scannerConfig.profile.slippageModel;
+  const takerFee = feeModel?.taker ?? 0;
+  const slip = feeModel?.slippage ?? 0;
+  const fees = size * takerFee;
+  const slippage = size * slip;
+  const netEdgePerContract = targetExit - entryPrice - takerFee - slip;
   const projectedPnlTarget = (targetExit - entryPrice) * size - fees - slippage;
   const projectedPnlStop = (stopPrice - entryPrice) * size - fees - slippage;
 
@@ -94,7 +97,7 @@ const MarketDetail = () => {
           </div>
           <button onClick={() => setShowPlaced(true)} className="w-full py-2 bg-primary text-primary-foreground rounded font-semibold text-[11px]">Save Paper Plan</button>
           {showPlaced && <div className="bg-info/10 border border-info/30 rounded p-2 text-[11px] text-info">Paper plan saved locally. No live execution is enabled.</div>}
-          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><AlertTriangle className="w-3 h-3" />Execution APIs are not connected in this client.</div>
+          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><AlertTriangle className="w-3 h-3" />Execution APIs are not connected in this client. Fee source: {feeModel?.source ?? 'default config'}.</div>
         </div>
       </div>
     </div>
