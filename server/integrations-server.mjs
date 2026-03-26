@@ -33,6 +33,11 @@ const environments = {
   kalshi: { prod: 'https://api.elections.kalshi.com/trade-api/v2', demo: 'https://demo-api.kalshi.co/trade-api/v2' },
 };
 
+const SUPPORTED_ENVS = {
+  polymarket: new Set(['prod']),
+  kalshi: new Set(['prod', 'demo']),
+};
+
 function json(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type' });
   res.end(JSON.stringify(body));
@@ -42,6 +47,23 @@ function mask(value = '') {
   if (!value) return null;
   if (value.length <= 8) return `${value.slice(0, 2)}***`;
   return `${value.slice(0, 4)}***${value.slice(-4)}`;
+}
+
+function cleanInput(value) {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : undefined;
+}
+
+function normalizePem(value) {
+  const trimmed = cleanInput(value);
+  if (!trimmed) return undefined;
+  return trimmed.replace(/\\n/g, '\n');
+}
+
+function readCredential(integration, field) {
+  if (!integration) return undefined;
+  return integration[field] ?? integration.credentials?.[field];
 }
 
 function encryptSecret(secret) {
@@ -76,6 +98,7 @@ async function parseBody(req) {
 async function testPolymarket(integration) {
   const base = environments.polymarket.prod;
   const out = { provider: 'polymarket', publicMarketData: false, authenticated: false, feeEndpoint: false, tradingEnabled: false, errors: [] };
+  const apiKeyId = readCredential(integration, 'apiKeyId');
   try {
     const pub = await fetch(`${base}/markets?limit=1`);
     out.publicMarketData = pub.ok;
@@ -83,7 +106,7 @@ async function testPolymarket(integration) {
   } catch (e) { out.errors.push(`public_market_data_network_${e.message}`); }
 
   try {
-    const fee = await fetch(`${base}/fee-rate`, { headers: integration.apiKeyId ? { 'POLY_API_KEY': integration.apiKeyId } : {} });
+    const fee = await fetch(`${base}/fee-rate`, { headers: apiKeyId ? { POLY_API_KEY: apiKeyId } : {} });
     out.feeEndpoint = fee.ok;
     if (!fee.ok) out.errors.push(`fee_http_${fee.status}`);
   } catch (e) { out.errors.push(`fee_network_${e.message}`); }
@@ -106,6 +129,8 @@ async function testKalshi(integration) {
   const env = integration.environment === 'demo' ? 'demo' : 'prod';
   const base = environments.kalshi[env];
   const out = { provider: 'kalshi', publicMarketData: false, authenticated: false, feeEndpoint: false, tradingEnabled: false, errors: [] };
+  const apiKeyId = readCredential(integration, 'apiKeyId');
+  const privateKeyPem = readCredential(integration, 'privateKeyPem');
 
   try {
     const pub = await fetch(`${base}/markets?limit=1`);
@@ -113,9 +138,9 @@ async function testKalshi(integration) {
     if (!pub.ok) out.errors.push(`public_market_data_http_${pub.status}`);
   } catch (e) { out.errors.push(`public_market_data_network_${e.message}`); }
 
-  if (integration.apiKeyId && integration.privateKeyPem) {
+  if (apiKeyId && privateKeyPem) {
     try {
-      const h = kalshiHeaders(integration.apiKeyId, integration.privateKeyPem, '/portfolio/balance');
+      const h = kalshiHeaders(apiKeyId, privateKeyPem, '/portfolio/balance');
       const auth = await fetch(`${base}/portfolio/balance`, { headers: h });
       out.authenticated = auth.ok;
       out.tradingEnabled = auth.ok;
@@ -134,7 +159,8 @@ async function testKalshi(integration) {
 
 async function syncFees(provider, integration) {
   if (provider === 'polymarket') {
-    const res = await fetch('https://clob.polymarket.com/fee-rate', { headers: integration?.apiKeyId ? { POLY_API_KEY: integration.apiKeyId } : {} });
+    const apiKeyId = readCredential(integration, 'apiKeyId');
+    const res = await fetch('https://clob.polymarket.com/fee-rate', { headers: apiKeyId ? { POLY_API_KEY: apiKeyId } : {} });
     const raw = await res.json().catch(() => ({}));
     return {
       provider,
@@ -183,31 +209,46 @@ const server = http.createServer(async (req, res) => {
       const body = await parseBody(req);
       const now = new Date().toISOString();
       const current = db.integrations[provider] ?? { provider, createdAt: now };
+      const requestedEnv = cleanInput(body.environment) ?? 'prod';
+      const environment = SUPPORTED_ENVS[provider].has(requestedEnv) ? requestedEnv : 'prod';
+      const apiKeyId = cleanInput(body.apiKeyId) ?? current.credentials?.apiKeyId;
+      const apiSecret = cleanInput(body.apiSecret);
+      const apiPassphrase = cleanInput(body.apiPassphrase);
+      const walletPrivateKey = cleanInput(body.walletPrivateKey);
+      const privateKeyPem = normalizePem(body.privateKeyPem) ?? current.credentials?.privateKeyPem;
+
+      if ((apiSecret || apiPassphrase || walletPrivateKey) && !MASTER_KEY) {
+        return json(res, 400, {
+          error: 'missing_master_key',
+          message: 'INTEGRATIONS_MASTER_KEY must be configured before saving encrypted secrets.',
+        });
+      }
+
       const next = {
         ...current,
         provider,
-        environment: body.environment ?? (provider === 'kalshi' ? 'prod' : 'prod'),
+        environment,
         status: 'disconnected',
         last_error: null,
         market_data_enabled: true,
         updatedAt: now,
         credentials_metadata: {
-          apiKeyId_masked: mask(body.apiKeyId),
-          hasPrivateKey: Boolean(body.privateKeyPem || body.walletPrivateKey),
-          hasApiSecret: Boolean(body.apiSecret),
-          hasApiPassphrase: Boolean(body.apiPassphrase),
+          apiKeyId_masked: mask(apiKeyId),
+          hasPrivateKey: Boolean(privateKeyPem || walletPrivateKey || current.credentials?.walletPrivateKey),
+          hasApiSecret: Boolean(apiSecret || current.credentials?.apiSecret),
+          hasApiPassphrase: Boolean(apiPassphrase || current.credentials?.apiPassphrase),
         },
         credentials: {
-          apiKeyId: body.apiKeyId ?? current.credentials?.apiKeyId,
-          apiSecret: body.apiSecret ? encryptSecret(body.apiSecret) : current.credentials?.apiSecret,
-          apiPassphrase: body.apiPassphrase ? encryptSecret(body.apiPassphrase) : current.credentials?.apiPassphrase,
-          privateKeyPem: body.privateKeyPem ?? current.credentials?.privateKeyPem,
-          walletPrivateKey: body.walletPrivateKey ? encryptSecret(body.walletPrivateKey) : current.credentials?.walletPrivateKey,
+          apiKeyId,
+          apiSecret: apiSecret ? encryptSecret(apiSecret) : current.credentials?.apiSecret,
+          apiPassphrase: apiPassphrase ? encryptSecret(apiPassphrase) : current.credentials?.apiPassphrase,
+          privateKeyPem,
+          walletPrivateKey: walletPrivateKey ? encryptSecret(walletPrivateKey) : current.credentials?.walletPrivateKey,
         },
       };
       const test = provider === 'polymarket'
-        ? await testPolymarket({ ...next, apiSecret: body.apiSecret, apiPassphrase: body.apiPassphrase })
-        : await testKalshi({ ...next, privateKeyPem: body.privateKeyPem });
+        ? await testPolymarket(next)
+        : await testKalshi(next);
       next.status = test.publicMarketData && (test.authenticated || provider === 'polymarket') ? 'connected' : 'disconnected';
       next.trading_enabled = test.tradingEnabled;
       next.fee_sync_enabled = test.feeEndpoint;
