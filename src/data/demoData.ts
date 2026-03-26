@@ -38,10 +38,14 @@ const rawMarkets: Omit<Market, 'market_url'>[] = [
   { id: 'm25', ticker: 'BOOK-BEST', title: 'Novel Z Hits #1 NYT Bestseller', platform: 'polymarket', marketSlug: 'novel-z-hits-nyt-bestseller', category: 'culture', eventEnd: '2026-04-06T00:00:00Z', settlementRules: 'NYT list', liquidityScore: 52 },
 ];
 
+export const unlinkedMarkets: Array<{ id: string; platform: Market['platform']; reason: string }> = [];
+
 export const markets: Market[] = rawMarkets.flatMap((market) => {
   const market_url = buildMarketUrl(market);
   if (!market_url) {
-    console.warn(`[market-url] unable to build link for ${market.id} (${market.platform})`);
+    const reason = 'Missing URL inputs for provider URL builder';
+    console.warn(`[market-url] unable to build link for ${market.id} (${market.platform}) - ${reason}`);
+    unlinkedMarkets.push({ id: market.id, platform: market.platform, reason });
     return [];
   }
 

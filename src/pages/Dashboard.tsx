@@ -1,4 +1,4 @@
-import { tradingProfile, journalTrades, signals, quotes, markets } from '@/data/demoData';
+import { tradingProfile, journalTrades, signals, quotes, markets, unlinkedMarkets } from '@/data/demoData';
 import { Link } from 'react-router-dom';
 import { TrendingUp, TrendingDown, Target, AlertTriangle, DollarSign, Activity, Zap, ExternalLink } from 'lucide-react';
 import { buildOutcomeTradeUrl } from '@/lib/marketUrlBuilder';
@@ -8,7 +8,7 @@ const fmtC = (n: number) => `${(n * 100).toFixed(1)}¢`;
 
 const Dashboard = () => {
   const actionableMarkets = markets.filter((market) => market.market_url);
-  const unlinkedMarketIds = new Set(markets.filter((market) => !market.market_url).map((market) => market.id));
+  const unlinkedMarketIds = new Set(unlinkedMarkets.map((market) => market.id));
   const actionableSignals = signals.filter((signal) => !unlinkedMarketIds.has(signal.marketId));
 
   const closedToday = journalTrades.filter(t => t.status === 'closed');
@@ -20,8 +20,9 @@ const Dashboard = () => {
     return s + (q.bestYesBid - t.entryPrice) * t.size;
   }, 0);
   const remaining = tradingProfile.dailyTarget - realizedPnl;
-  const avgEdge = actionableSignals.filter(s => s.action !== 'wait').reduce((s, sig) => s + sig.expectedNetEdge, 0) / actionableSignals.filter(s => s.action !== 'wait').length;
-  const tradesNeeded = Math.ceil(remaining / (avgEdge * 30));
+  const tradableSignals = actionableSignals.filter(s => s.action !== 'wait');
+  const avgEdge = tradableSignals.length ? tradableSignals.reduce((s, sig) => s + sig.expectedNetEdge, 0) / tradableSignals.length : 0;
+  const tradesNeeded = avgEdge > 0 ? Math.ceil(remaining / (avgEdge * 30)) : 0;
   const drawdown = journalTrades.filter(t => t.status === 'stopped').reduce((s, t) => s + Math.abs(t.realizedPnl ?? 0), 0);
   const killSwitch = drawdown >= tradingProfile.maxDailyLoss;
 
@@ -52,6 +53,11 @@ const Dashboard = () => {
         <div className="bg-loss/10 border border-loss/30 rounded-lg p-3 flex items-center gap-3">
           <AlertTriangle className="w-5 h-5 text-loss" />
           <span className="text-sm font-medium text-loss">KILL SWITCH: Daily drawdown limit reached. Paper trading disabled.</span>
+        </div>
+      )}
+      {unlinkedMarkets.length > 0 && (
+        <div className="bg-warn/10 border border-warn/30 rounded-lg p-3 text-xs text-warn">
+          {unlinkedMarkets.length} market(s) hidden because a live outbound URL could not be resolved.
         </div>
       )}
 
@@ -141,7 +147,7 @@ const Dashboard = () => {
               <div className="bg-surface-2 rounded p-2 mt-2">
                 <p className="text-muted-foreground text-[11px]">
                   <strong className="text-foreground">Formula:</strong> Remaining Target ÷ (Avg Net Edge × Avg Size) = Trades Needed<br/>
-                  {fmt(remaining)} ÷ {fmt(avgEdge * 30)} ≈ {tradesNeeded} trades
+                  {avgEdge > 0 ? `${fmt(remaining)} ÷ ${fmt(avgEdge * 30)} ≈ ${tradesNeeded} trades` : 'No tradable signals with linkable markets right now.'}
                 </p>
               </div>
             </div>
