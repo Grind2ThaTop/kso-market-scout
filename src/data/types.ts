@@ -2,10 +2,14 @@ export interface Market {
   id: string;
   ticker: string;
   title: string;
+  platform: 'polymarket' | 'kalshi';
+  marketSlug?: string;
+  eventSlug?: string;
   category: 'sports' | 'politics' | 'economics' | 'weather' | 'culture';
   eventEnd: string;
   settlementRules: string;
   liquidityScore: number;
+  market_url: string;
 }
 
 export interface QuoteSnapshot {

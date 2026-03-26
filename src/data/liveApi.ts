@@ -1,4 +1,5 @@
 import { Market, QuoteSnapshot, Signal, TradingProfile } from './types';
+import { buildMarketUrl } from '@/lib/marketUrlBuilder';
 
 const DEFAULT_POLL_MS = 15000;
 
@@ -129,14 +130,22 @@ export async function fetchScanSnapshot(): Promise<ScanSnapshot> {
       const volume = toNumber(row.volume24h) ?? toNumber(row.volume) ?? toNumber(row.liquidity) ?? 0;
       const liquidityScore = Math.max(1, Math.min(99, Math.round(Math.log10(volume + 10) * 30)));
 
+      const platform = (String(row.platform ?? 'polymarket').toLowerCase() as Market['platform']) || 'polymarket';
+      const marketSlug = String(row.marketSlug ?? row.slug ?? row.conditionSlug ?? '');
+      const eventSlug = String(row.eventSlug ?? row.event ?? '');
+
       const market: Market = {
         id,
         ticker: String(row.ticker ?? row.slug ?? id).toUpperCase(),
         title,
+        platform,
+        marketSlug,
+        eventSlug,
         category: normalizeCategory(row.category ?? row.group ?? row.tag),
         eventEnd,
         settlementRules: String(row.rules ?? row.description ?? 'See exchange rules.'),
         liquidityScore,
+        market_url: buildMarketUrl({ platform, marketSlug, eventSlug }) || '',
       };
 
       const normalizedQuote: QuoteSnapshot = {

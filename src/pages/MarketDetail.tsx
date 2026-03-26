@@ -1,8 +1,9 @@
 import { useParams, Link } from 'react-router-dom';
 import { useState } from 'react';
-import { ArrowLeft, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, ExternalLink } from 'lucide-react';
 import { useMarketScanner } from '@/hooks/useMarketScanner';
 import { useIntegratedFeeModel } from '@/integrations/useIntegratedFeeModel';
+import { buildOutcomeTradeUrl } from '@/lib/marketUrlBuilder';
 
 const MarketDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -20,8 +21,8 @@ const MarketDetail = () => {
   const quote = data?.quotes.find((q) => q.marketId === id);
   const signal = data?.signals.find((s) => s.marketId === id);
 
-  if (!market || !quote) {
-    return <div className="flex-1 flex items-center justify-center text-muted-foreground">Market not found in current live feed.</div>;
+  if (!market || !quote || !market.market_url) {
+    return <div className="flex-1 flex items-center justify-center text-muted-foreground">Market not found or not actionable.</div>;
   }
 
   const entryPrice = side === 'yes' ? quote.bestYesAsk : quote.bestNoAsk;
@@ -96,6 +97,14 @@ const MarketDetail = () => {
             <div className="flex justify-between"><span>P&L if Stopped</span><span className="text-loss">${projectedPnlStop.toFixed(2)}</span></div>
           </div>
           <button onClick={() => setShowPlaced(true)} className="w-full py-2 bg-primary text-primary-foreground rounded font-semibold text-[11px]">Save Paper Plan</button>
+          <a
+            href={buildOutcomeTradeUrl(market, side)}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center justify-center gap-1 w-full py-2 bg-accent text-accent-foreground rounded font-semibold text-[11px] hover:bg-accent/90"
+          >
+            <ExternalLink className="w-3 h-3" /> Trade on {market.platform}
+          </a>
           {showPlaced && <div className="bg-info/10 border border-info/30 rounded p-2 text-[11px] text-info">Paper plan saved locally. No live execution is enabled.</div>}
           <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><AlertTriangle className="w-3 h-3" />Execution APIs are not connected in this client. Fee source: {feeModel?.source ?? 'default config'}.</div>
         </div>
