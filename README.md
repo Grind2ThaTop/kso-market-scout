@@ -40,7 +40,7 @@ VITE_INTEGRATIONS_API_BASE=http://localhost:8787
 | Provider | Public endpoints | Authenticated endpoints | Credentials | Auth/signing | Fee sync |
 |---|---|---|---|---|---|
 | Polymarket | `GET /markets` on CLOB | Trading paths only if API key/secret/passphrase are configured | API key id, API secret, API passphrase, optional wallet private key | CLOB L2 model expected; app keeps trading disabled unless authenticated config passes provider tests | `GET /fee-rate` |
-| Kalshi | `GET /markets` | `GET /portfolio/balance` for auth validation | API Key ID + RSA private key PEM | `KALSHI-ACCESS-*` headers with RSA signature over timestamp+method+path | `GET /series/fee_changes` raw payload normalized + preserved |
+| Kalshi | `GET /markets` | `GET /portfolio/balance` for auth validation | API Key ID + RSA private key PEM | `KALSHI-ACCESS-*` headers with RSA signature over timestamp+method+`/trade-api/v2/...` request path | `GET /series/fee_changes` raw payload normalized + preserved |
 
 ### Security model
 
