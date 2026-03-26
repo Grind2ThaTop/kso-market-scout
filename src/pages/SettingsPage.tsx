@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Settings as SettingsIcon, Link2, RefreshCw, Shield, Trash2 } from 'lucide-react';
 import { integrationsApi } from '@/integrations/api';
 import { Provider } from '@/integrations/types';
@@ -20,7 +20,7 @@ const PROVIDERS: { id: Provider; title: string; description: string; envs: strin
   },
 ];
 
-const SettingsPage = () => {
+const SettingsPageContent = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [forms, setForms] = useState<Record<Provider, Record<string, string>>>({
@@ -166,6 +166,16 @@ const SettingsPage = () => {
         })}
       </div>
     </div>
+  );
+};
+
+const SettingsPage = () => {
+  const [fallbackClient] = useState(() => new QueryClient());
+
+  return (
+    <QueryClientProvider client={fallbackClient}>
+      <SettingsPageContent />
+    </QueryClientProvider>
   );
 };
 
