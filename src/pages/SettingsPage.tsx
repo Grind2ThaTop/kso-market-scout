@@ -28,7 +28,7 @@ const SettingsPage = () => {
     kalshi: { environment: 'prod', apiKeyId: '', privateKeyPem: '' },
   });
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ['integrations'],
     queryFn: integrationsApi.list,
   });
@@ -94,6 +94,11 @@ const SettingsPage = () => {
       <p className="text-xs text-muted-foreground">Goal: one serious settings panel for Polymarket + Kalshi with real connection tests and fee sync.</p>
 
       {isLoading ? <div className="text-sm text-muted-foreground">Loading integrations…</div> : null}
+      {error ? (
+        <div className="text-xs text-loss bg-loss/10 border border-loss/30 p-2 rounded">
+          Could not reach the integrations API. Make sure <code>server/integrations-server.mjs</code> is running on port 8787, or set <code>VITE_INTEGRATIONS_API_BASE</code>.
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-4">
         {PROVIDERS.map((provider) => {
