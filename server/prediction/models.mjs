@@ -10,10 +10,18 @@ export function toNormalizedMarket(row, provider) {
 }
 
 export function toProviderStatus(provider, integration, health) {
+  const credentialsValid = integration?.credentialsValid;
+
+  if (credentialsValid === false) return 'invalid';
   if (health.rateLimited) return 'rate-limited';
+
+  if (!health.connected) {
+    return health.degraded ? 'degraded' : 'disconnected';
+  }
+
   if (health.degraded) return 'degraded';
-  if (health.connected && integration?.credentialsValid) return 'connected';
-  if (health.connected) return 'degraded';
-  if (integration?.credentialsValid === false) return 'invalid';
-  return 'disconnected';
+  if (credentialsValid === true) return 'connected';
+
+  // Public connectivity is healthy but auth has not been validated yet.
+  return provider === 'polymarket' ? 'degraded' : 'disconnected';
 }
