@@ -5,7 +5,8 @@ import path from 'node:path';
 
 const PORT = Number(process.env.INTEGRATIONS_PORT ?? 8787);
 const DATA_FILE = path.resolve('server/data/integrations.json');
-const MASTER_KEY = process.env.INTEGRATIONS_MASTER_KEY;
+const MASTER_KEY = process.env.INTEGRATIONS_MASTER_KEY
+  ?? (process.env.NODE_ENV === 'production' ? undefined : 'dev-only-insecure-master-key');
 
 const defaultCaps = {
   polymarket: {
