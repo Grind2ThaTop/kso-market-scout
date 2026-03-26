@@ -2,6 +2,7 @@ import { useLocation, Link } from 'react-router-dom';
 import { KSOLogo } from '@/components/KSOLogo';
 import { useApp } from '@/context/AppContext';
 import {
+  LayoutDashboard, BarChart3, FlaskConical, BookOpen, Settings, LogOut, ChevronLeft, ChevronRight, Users,
   LayoutDashboard, FlaskConical, BookOpen, Settings, LogOut, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -10,6 +11,7 @@ const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/strategy', icon: FlaskConical, label: 'Strategy Lab' },
   { to: '/journal', icon: BookOpen, label: 'Journal' },
+  { to: '/smart-money', icon: Users, label: 'Smart Money' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];
 
