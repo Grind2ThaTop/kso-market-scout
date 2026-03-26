@@ -6,19 +6,16 @@ export function useIntegratedFeeModel() {
   return useQuery({
     queryKey: ['integrations', 'fee-model'],
     queryFn: async () => {
-      const [polyFee, kalshiFee] = await Promise.all([
-        integrationsApi.fees('polymarket').catch(() => null),
-        integrationsApi.fees('kalshi').catch(() => null),
-      ]);
-
-      const preferred = polyFee ?? kalshiFee;
+      const providers = await integrationsApi.list();
+      const withFee = providers.providers.find((row) => row.integration?.provider === 'polymarket')
+        ?? providers.providers.find((row) => row.integration?.provider === 'kalshi');
 
       return {
-        maker: preferred?.maker_fee ?? scannerConfig.profile.feeModel.maker,
-        taker: preferred?.taker_fee ?? scannerConfig.profile.feeModel.taker,
+        maker: scannerConfig.profile.feeModel.maker,
+        taker: scannerConfig.profile.feeModel.taker,
         slippage: scannerConfig.profile.slippageModel,
-        source: preferred?.provider ?? 'default',
-        syncedAt: preferred?.synced_at ?? null,
+        source: withFee?.provider ?? 'default',
+        syncedAt: withFee?.integration?.lastSuccessfulSyncAt ?? null,
       };
     },
     staleTime: 30_000,
