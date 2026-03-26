@@ -22,8 +22,8 @@ const Landing = () => {
         <div className="max-w-3xl text-center">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
             <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-4 leading-tight">
-              Prediction Market<br />
-              <span className="text-primary">Analytics & Paper Trading</span>
+              Find High-Edge Prediction Trades<br />
+              <span className="text-primary">Before the Market Catches Up</span>
             </h1>
             <p className="text-muted-foreground text-lg mb-8 max-w-xl mx-auto">
               Identify mispriced contracts, calculate expected edge after fees, run paper trades, and track performance — all in one terminal.
