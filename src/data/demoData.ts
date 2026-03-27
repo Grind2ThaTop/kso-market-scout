@@ -86,10 +86,10 @@ function buildDemoSignals(): Signal[] {
     const m = DEMO_MARKETS.find((mk) => mk.id === q.marketId)!;
     const mid = (q.bestYesBid + q.bestYesAsk) / 2;
     const momentum = Math.abs(0.5 - mid) * 2;
-    const imbalance = Math.max(0, 1 - q.spread * 20);
-    const edge = Math.max(0, 0.02 - q.spread / 2);
-    const score = Math.round((momentum * 0.4 + imbalance * 0.4 + edge * 10) * 100);
-    const confidence = Math.min(95, Math.max(15, Math.round((m.liquidityScore / 100) * 90)));
+    const imbalance = Math.max(0, 1 - q.spread * 10);
+    const edge = Math.max(0, 0.03 - q.spread / 2);
+    const score = Math.round((momentum * 0.35 + imbalance * 0.35 + edge * 8 + (m.liquidityScore / 100) * 0.3) * 100);
+    const confidence = Math.min(95, Math.max(20, Math.round((m.liquidityScore / 100) * 80 + momentum * 15)));
     const ms = new Date(m.eventEnd).getTime() - Date.now();
     const hrs = Math.round(ms / 3600_000);
     const tte = hrs < 0 ? 'Expired' : hrs < 1 ? `${Math.round(ms / 60000)}m` : hrs < 24 ? `${hrs}h` : `${Math.round(hrs / 24)}d`;
@@ -99,17 +99,19 @@ function buildDemoSignals(): Signal[] {
     let sentimentBias: Signal['sentimentBias'] = 'neutral';
     let thesis = 'No clear edge. Waiting for movement.';
 
-    const hasEdge = edge > 0.005;
-    const hasLiq = m.liquidityScore > 40;
-    const tightSpread = q.spread < 0.04;
-
-    if (hasEdge && hasLiq && tightSpread) {
-      if (mid >= 0.55) {
+    if (m.liquidityScore > 25 && q.spread < 0.08) {
+      if (mid >= 0.58) {
         direction = 'YES'; action = 'paper_buy_yes'; sentimentBias = 'bullish';
-        thesis = `YES momentum (mid ${(mid * 100).toFixed(0)}¢). Spread tight at ${(q.spread * 100).toFixed(1)}¢.`;
-      } else if (mid <= 0.45) {
+        thesis = `YES favored at ${(mid * 100).toFixed(0)}¢. Spread ${(q.spread * 100).toFixed(1)}¢, liq ${m.liquidityScore}.`;
+      } else if (mid <= 0.42) {
         direction = 'NO'; action = 'paper_buy_no'; sentimentBias = 'bearish';
-        thesis = `Market pricing NO (YES at ${(mid * 100).toFixed(0)}¢). Good entry for NO side.`;
+        thesis = `NO favored (YES at ${(mid * 100).toFixed(0)}¢). Buy NO for value.`;
+      } else if (mid >= 0.52) {
+        direction = 'YES'; action = 'paper_buy_yes'; sentimentBias = 'bullish';
+        thesis = `Slight YES lean at ${(mid * 100).toFixed(0)}¢. Liq: ${m.liquidityScore}.`;
+      } else if (mid <= 0.48) {
+        direction = 'NO'; action = 'paper_buy_no'; sentimentBias = 'bearish';
+        thesis = `Slight NO lean (YES at ${(mid * 100).toFixed(0)}¢). Liq: ${m.liquidityScore}.`;
       }
     }
 
