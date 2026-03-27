@@ -38,7 +38,7 @@ const timeToHours = (value: string) => {
 };
 
 const Dashboard = () => {
-  const { data, isLoading, isError, error } = useMarketScanner();
+  const { data, isLoading, isFetching, isError, error, refetch } = useMarketScanner();
   const [sortKey, setSortKey] = useState<SortKey>('score');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [filterDirection, setFilterDirection] = useState<FilterDirection>('ALL');
