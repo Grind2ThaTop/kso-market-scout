@@ -6,7 +6,7 @@ import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Zap, ShieldAlert, TrendingUp, TrendingDown, Activity, Power, AlertTriangle, Clock, DollarSign, Target } from 'lucide-react';
+import { Zap, ShieldAlert, TrendingUp, TrendingDown, Activity, Power, AlertTriangle, Clock, DollarSign, Target, RefreshCw, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface AutoTradeSettings {
