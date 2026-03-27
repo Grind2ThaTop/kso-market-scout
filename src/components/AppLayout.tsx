@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Users,
+  Zap,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -18,6 +19,7 @@ const navItems = [
   { to: '/strategy', icon: FlaskConical, label: 'Strategy Lab' },
   { to: '/journal', icon: BookOpen, label: 'Journal' },
   { to: '/smart-money', icon: Users, label: 'Smart Money' },
+  { to: '/auto-trade', icon: Zap, label: 'Auto-Trade' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];
 
