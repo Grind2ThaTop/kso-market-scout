@@ -72,6 +72,10 @@ export class KalshiProvider extends PredictionMarketProvider {
       // Skip titles that are just comma-separated parlays
       const title = m.title ?? '';
       if ((title.match(/,/g) || []).length > 3) return false;
+      // Skip near-resolved markets (>90¢ or <10¢) — no profit room
+      const lastPrice = Number(m.last_price ?? m.yes_bid ?? 0);
+      const normalizedPrice = lastPrice > 1 ? lastPrice / 100 : lastPrice;
+      if (normalizedPrice >= 0.90 || (normalizedPrice > 0 && normalizedPrice <= 0.10)) return false;
       return true;
     });
 
