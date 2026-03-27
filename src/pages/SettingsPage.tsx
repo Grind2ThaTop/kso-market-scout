@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link2, RefreshCw, Shield } from 'lucide-react';
 import { integrationsApi } from '@/integrations/api';
@@ -47,9 +47,28 @@ const SettingsPageContent = () => {
   const { data, isLoading } = useQuery({ queryKey: ['integrations'], queryFn: integrationsApi.list });
 
   const integrationMap = useMemo(() => {
-    const map = new Map<Provider, any>();
+    const map = new Map<Provider, { credentials?: Record<string, string>; enabled?: boolean; environment?: 'prod' | 'demo' }>();
     for (const row of data?.providers ?? []) map.set(row.provider, row.integration);
     return map;
+  }, [data]);
+
+  useEffect(() => {
+    if (!data?.providers?.length) return;
+
+    setForms((prev) => {
+      const next = { ...prev };
+      for (const { provider, integration } of data.providers) {
+        if (!integration) continue;
+        const existing = prev[provider];
+        next[provider] = {
+          ...existing,
+          ...integration.credentials,
+          enabled: integration.enabled ?? existing.enabled,
+          environment: integration.environment ?? existing.environment,
+        };
+      }
+      return next;
+    });
   }, [data]);
 
   const save = useMutation({

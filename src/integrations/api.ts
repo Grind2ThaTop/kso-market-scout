@@ -45,6 +45,7 @@ function toRecord(s: StoredIntegration): IntegrationRecord {
     provider: s.provider,
     enabled: s.enabled,
     environment: s.environment,
+    credentials: s.credentials,
     status: s.status,
     lastSuccessfulSyncAt: s.lastSuccessfulSyncAt,
     lastError: s.lastError,
@@ -82,9 +83,9 @@ export const integrationsApi = {
       enabled: payload.enabled,
       environment: payload.environment ?? 'prod',
       credentials: payload.credentials,
-      status: hasCredentials ? 'disconnected' : 'disconnected',
-      lastSuccessfulSyncAt: null,
-      lastError: null,
+      status: idx >= 0 ? all[idx].status : (hasCredentials ? 'invalid' : 'disconnected'),
+      lastSuccessfulSyncAt: idx >= 0 ? all[idx].lastSuccessfulSyncAt : null,
+      lastError: idx >= 0 ? all[idx].lastError : null,
     };
     if (idx >= 0) all[idx] = entry;
     else all.push(entry);

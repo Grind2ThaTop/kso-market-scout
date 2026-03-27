@@ -5,6 +5,7 @@ export interface IntegrationRecord {
   provider: Provider;
   enabled: boolean;
   environment: 'prod' | 'demo';
+  credentials?: Record<string, string>;
   status?: ProviderStatus;
   credentialsValid?: boolean;
   lastTestedAt?: string;
