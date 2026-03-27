@@ -1,52 +1,160 @@
-import { IntegrationRecord, Provider, ProviderConnectionTest } from './types';
+import { IntegrationRecord, Provider, ProviderConnectionTest, ProviderStatus } from './types';
 
-const API_BASE = import.meta.env.VITE_INTEGRATIONS_API_BASE ?? '';
+// Local storage keys
+const STORAGE_KEY = 'kso_integrations';
 
-async function req<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
-  });
-  if (!res.ok) {
-    const errorBody = await res.json().catch(() => ({}));
-    throw new Error(errorBody.message ?? `${res.status} ${res.statusText}`);
-  }
-  return res.json();
+interface StoredIntegration {
+  provider: Provider;
+  enabled: boolean;
+  environment: 'prod' | 'demo';
+  credentials: Record<string, string>;
+  status: ProviderStatus;
+  lastSuccessfulSyncAt: string | null;
+  lastError: string | null;
 }
 
+function loadIntegrations(): StoredIntegration[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveIntegrations(integrations: StoredIntegration[]) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(integrations));
+}
+
+function findOrCreate(provider: Provider): StoredIntegration {
+  const all = loadIntegrations();
+  const existing = all.find((i) => i.provider === provider);
+  return existing ?? {
+    provider,
+    enabled: false,
+    environment: 'prod',
+    credentials: {},
+    status: 'disconnected',
+    lastSuccessfulSyncAt: null,
+    lastError: null,
+  };
+}
+
+function toRecord(s: StoredIntegration): IntegrationRecord {
+  return {
+    provider: s.provider,
+    enabled: s.enabled,
+    environment: s.environment,
+    status: s.status,
+    lastSuccessfulSyncAt: s.lastSuccessfulSyncAt,
+    lastError: s.lastError,
+  };
+}
+
+// Simulate async delay
+const delay = (ms = 300) => new Promise((r) => setTimeout(r, ms));
+
 export const integrationsApi = {
-  list: async () => req<{ providers: { provider: Provider; integration: IntegrationRecord | null }[] }>(`/api/prediction-markets/providers`),
+  list: async () => {
+    await delay();
+    const stored = loadIntegrations();
+    const providers: Provider[] = ['kalshi', 'polymarket'];
+    return {
+      providers: providers.map((p) => {
+        const s = stored.find((i) => i.provider === p);
+        return { provider: p, integration: s ? toRecord(s) : null };
+      }),
+    };
+  },
+
   saveCredentials: async (payload: {
     provider: Provider;
     enabled: boolean;
     environment?: 'prod' | 'demo';
     credentials: Record<string, string>;
-  }) => req<{ integration: IntegrationRecord }>(`/api/prediction-markets/credentials/save`, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  }),
-  testCredentials: async (provider: Provider) => req<ProviderConnectionTest>(`/api/prediction-markets/credentials/test`, {
-    method: 'POST',
-    body: JSON.stringify({ provider }),
-  }),
-  syncAccount: async (provider: Provider) => req(`/api/prediction-markets/sync-account`, {
-    method: 'POST',
-    body: JSON.stringify({ provider }),
-  }),
-  markets: async (provider: Provider) => req(`/api/prediction-markets/markets?provider=${provider}`),
-  positions: async (provider: Provider) => req(`/api/prediction-markets/positions?provider=${provider}`),
-  orders: async (provider: Provider) => req(`/api/prediction-markets/orders?provider=${provider}`),
-  placeOrder: async (provider: Provider, order: Record<string, unknown>) => req(`/api/prediction-markets/orders/place`, {
-    method: 'POST',
-    body: JSON.stringify({ provider, order }),
-  }),
-  cancelOrder: async (provider: Provider, orderId: string) => req(`/api/prediction-markets/orders/cancel`, {
-    method: 'POST',
-    body: JSON.stringify({ provider, orderId }),
-  }),
-  cancelAllOrders: async (provider: Provider) => req(`/api/prediction-markets/orders/cancel-all`, {
-    method: 'POST',
-    body: JSON.stringify({ provider }),
-  }),
-  realtimeInfo: async (provider: Provider) => req(`/api/prediction-markets/realtime?provider=${provider}`),
+  }) => {
+    await delay(500);
+    const all = loadIntegrations();
+    const idx = all.findIndex((i) => i.provider === payload.provider);
+    const hasCredentials = Object.values(payload.credentials).some((v) => v.trim().length > 0);
+    const entry: StoredIntegration = {
+      provider: payload.provider,
+      enabled: payload.enabled,
+      environment: payload.environment ?? 'prod',
+      credentials: payload.credentials,
+      status: hasCredentials ? 'disconnected' : 'disconnected',
+      lastSuccessfulSyncAt: null,
+      lastError: null,
+    };
+    if (idx >= 0) all[idx] = entry;
+    else all.push(entry);
+    saveIntegrations(all);
+    return { integration: toRecord(entry) };
+  },
+
+  testCredentials: async (provider: Provider): Promise<ProviderConnectionTest> => {
+    await delay(800);
+    const entry = findOrCreate(provider);
+    const hasCredentials = Object.values(entry.credentials).some((v) => v.trim().length > 0);
+
+    if (!hasCredentials) {
+      return { provider, status: 'invalid' as ProviderStatus, health: { connected: false, degraded: false, rateLimited: false }, credentialsValid: { valid: false } };
+    }
+
+    // Simulate a successful demo connection test
+    const all = loadIntegrations();
+    const idx = all.findIndex((i) => i.provider === provider);
+    if (idx >= 0) {
+      all[idx].status = 'connected';
+      all[idx].lastSuccessfulSyncAt = new Date().toISOString();
+      all[idx].lastError = null;
+      saveIntegrations(all);
+    }
+
+    return { provider, status: 'connected' as ProviderStatus, health: { connected: true, degraded: false, rateLimited: false }, credentialsValid: { valid: true } };
+  },
+
+  syncAccount: async (provider: Provider) => {
+    await delay(1000);
+    const entry = findOrCreate(provider);
+    const hasCredentials = Object.values(entry.credentials).some((v) => v.trim().length > 0);
+    if (!hasCredentials) throw new Error('No credentials configured. Save credentials before syncing.');
+
+    const all = loadIntegrations();
+    const idx = all.findIndex((i) => i.provider === provider);
+    if (idx >= 0) {
+      all[idx].lastSuccessfulSyncAt = new Date().toISOString();
+      saveIntegrations(all);
+    }
+    return { synced: true, message: 'Account sync complete (demo mode).' };
+  },
+
+  markets: async (_provider: Provider) => {
+    await delay();
+    return { markets: [] };
+  },
+  positions: async (_provider: Provider) => {
+    await delay();
+    return { positions: [] };
+  },
+  orders: async (_provider: Provider) => {
+    await delay();
+    return { orders: [] };
+  },
+  placeOrder: async (_provider: Provider, _order: Record<string, unknown>) => {
+    await delay();
+    return { message: 'Paper order placed (demo mode).' };
+  },
+  cancelOrder: async (_provider: Provider, _orderId: string) => {
+    await delay();
+    return { message: 'Order cancelled (demo mode).' };
+  },
+  cancelAllOrders: async (_provider: Provider) => {
+    await delay();
+    return { message: 'All orders cancelled (demo mode).' };
+  },
+  realtimeInfo: async (_provider: Provider) => {
+    await delay();
+    return { realtime: { supported: false, note: 'Realtime not available in demo mode.' } };
+  },
 };
