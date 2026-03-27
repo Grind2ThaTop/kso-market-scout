@@ -320,14 +320,18 @@ const AutoTradePage = () => {
       if (poly) {
         const polyBal = poly.balance;
         const polyAvailable = polyBal != null
-          ? (typeof polyBal === 'number' ? polyBal : Number(polyBal?.balance ?? polyBal?.available ?? 0))
+          ? (typeof polyBal === 'number' ? polyBal : Number(polyBal?.balance ?? polyBal?.available ?? polyBal?.value ?? 0))
           : null;
+        const prettyPolyError = poly.error
+          ?? (poly.errors?.length
+            ? 'Polymarket connected, but live account details are only partially available right now.'
+            : null);
         persistPolyBalance({
           available: polyAvailable,
           livePositions: Array.isArray(poly.positions) ? poly.positions.length : 0,
           liveOrders: poly.openOrders ?? 0,
           lastSynced: new Date().toLocaleTimeString(),
-          error: poly.error ?? (poly.errors?.length ? poly.errors.join('; ') : null),
+          error: prettyPolyError,
         });
       }
 

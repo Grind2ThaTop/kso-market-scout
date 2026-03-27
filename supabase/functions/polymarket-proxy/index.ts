@@ -151,50 +151,46 @@ Deno.serve(async (req) => {
         break;
       }
       case "live-balance": {
-        // Requires CLOB L2 credentials stored as secrets
-        const polyApiKey = Deno.env.get("POLYMARKET_API_KEY");
-        const polyApiSecret = Deno.env.get("POLYMARKET_API_SECRET");
-        const polyPassphrase = Deno.env.get("POLYMARKET_PASSPHRASE");
         const polyWallet = Deno.env.get("POLYMARKET_WALLET_ADDRESS");
-
-        if (!polyApiKey || !polyApiSecret || !polyPassphrase) {
-          result = {
-            balance: null,
-            positions: [],
-            error: "Polymarket CLOB credentials not configured. Add POLYMARKET_API_KEY, POLYMARKET_API_SECRET, and POLYMARKET_PASSPHRASE secrets.",
-          };
-          break;
-        }
 
         const errors: string[] = [];
         let balance = null;
         let positions: unknown[] = [];
         let openOrders = 0;
 
-        // Get balance from CLOB
-        try {
-          balance = await clobGet(polyApiKey, polyApiSecret, polyPassphrase, "/balance");
-        } catch (e: any) {
-          errors.push(`Balance: ${e.message}`);
+        if (!polyWallet) {
+          result = {
+            balance: null,
+            positions: [],
+            openOrders: 0,
+            error: "Polymarket wallet address is not configured.",
+          };
+          break;
         }
 
-        // Get positions from public data API using wallet address
-        if (polyWallet) {
-          try {
-            const posData = await dataGet("/v1/positions", { user: polyWallet, limit: "100" });
-            positions = Array.isArray(posData) ? posData : posData?.data ?? posData?.positions ?? [];
-          } catch (e: any) {
-            errors.push(`Positions: ${e.message}`);
+        try {
+          const [positionsData, valueData] = await Promise.allSettled([
+            dataGet("/positions", { user: polyWallet, limit: "100" }),
+            dataGet("/value", { user: polyWallet }),
+          ]);
+
+          if (positionsData.status === "fulfilled") {
+            const pos = positionsData.value;
+            positions = Array.isArray(pos) ? pos : pos?.data ?? pos?.positions ?? [];
+          } else {
+            errors.push("Could not load live positions from Polymarket.");
           }
-        }
 
-        // Get open orders from CLOB
-        try {
-          const ordersData = await clobGet(polyApiKey, polyApiSecret, polyPassphrase, "/orders?status=open");
-          const ordersList = Array.isArray(ordersData) ? ordersData : ordersData?.data ?? [];
-          openOrders = ordersList.length;
-        } catch (e: any) {
-          errors.push(`Orders: ${e.message}`);
+          if (valueData.status === "fulfilled") {
+            const val = valueData.value;
+            const parsedBalance = val?.value ?? val?.balance ?? val?.available ?? val?.total;
+            balance = typeof parsedBalance === "number" ? parsedBalance : Number(parsedBalance ?? NaN);
+            if (!Number.isFinite(balance)) balance = null;
+          } else {
+            errors.push("Could not load wallet value from Polymarket.");
+          }
+        } catch {
+          errors.push("Polymarket live balance lookup failed.");
         }
 
         result = {
