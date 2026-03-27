@@ -62,7 +62,7 @@ async function signKalshi(
 
   return {
     "KALSHI-ACCESS-KEY": apiKeyId,
-    "KALSHI-ACCESS-SIGNATURE": base64Encode(new Uint8Array(sig)),
+    "KALSHI-ACCESS-SIGNATURE": uint8ToBase64(new Uint8Array(sig)),
     "KALSHI-ACCESS-TIMESTAMP": timestamp,
     "Content-Type": "application/json",
   };
