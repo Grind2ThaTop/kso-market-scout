@@ -98,7 +98,7 @@ export const integrationsApi = {
     const hasCredentials = Object.values(entry.credentials).some((v) => v.trim().length > 0);
 
     if (!hasCredentials) {
-      return { provider, status: 'invalid' as ProviderStatus, message: 'No credentials saved. Enter and save your API credentials first.' };
+      return { provider, status: 'invalid' as ProviderStatus, health: { connected: false, degraded: false, rateLimited: false }, credentialsValid: { valid: false } };
     }
 
     // Simulate a successful demo connection test
@@ -111,7 +111,7 @@ export const integrationsApi = {
       saveIntegrations(all);
     }
 
-    return { provider, status: 'connected' as ProviderStatus, message: 'Connection test successful (demo mode).' };
+    return { provider, status: 'connected' as ProviderStatus, health: { connected: true, degraded: false, rateLimited: false }, credentialsValid: { valid: true } };
   },
 
   syncAccount: async (provider: Provider) => {
