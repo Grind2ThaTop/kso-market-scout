@@ -277,22 +277,68 @@ const AutoTradePage = () => {
 
   const syncMutation = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke('sync-positions');
-      if (error) throw error;
-      return data;
+      // Sync both Kalshi and Polymarket in parallel
+      const [kalshiRes, polyRes] = await Promise.allSettled([
+        supabase.functions.invoke('sync-positions'),
+        supabase.functions.invoke('polymarket-proxy', {
+          body: null,
+          headers: { 'Content-Type': 'application/json' },
+          method: 'GET',
+        }),
+      ]);
+
+      // For polymarket, we need to call with action=live-balance
+      let polyData: any = null;
+      try {
+        const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+        const session = (await supabase.auth.getSession()).data.session;
+        if (session && projectId) {
+          const polyResp = await fetch(
+            `https://${projectId}.supabase.co/functions/v1/polymarket-proxy?action=live-balance`,
+            {
+              headers: {
+                Authorization: `Bearer ${session.access_token}`,
+                apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+              },
+            }
+          );
+          if (polyResp.ok) polyData = await polyResp.json();
+        }
+      } catch {}
+
+      const kalshiData = kalshiRes.status === 'fulfilled' ? kalshiRes.value.data : null;
+      const kalshiError = kalshiRes.status === 'rejected' ? String(kalshiRes.reason) : kalshiData?.error ?? null;
+
+      return { kalshi: kalshiData, kalshiError, poly: polyData };
     },
-    onSuccess: (data) => {
+    onSuccess: ({ kalshi, kalshiError, poly }) => {
       queryClient.invalidateQueries({ queryKey: ['positions'] });
       queryClient.invalidateQueries({ queryKey: ['order-history'] });
+
       persistExchangeBalance({
-        available: data?.balance?.available ?? null,
-        total: data?.balance?.total ?? null,
-        livePositions: data?.livePositions ?? 0,
-        liveOrders: data?.liveOrders ?? 0,
+        available: kalshi?.balance?.available ?? null,
+        total: kalshi?.balance?.total ?? null,
+        livePositions: kalshi?.livePositions ?? 0,
+        liveOrders: kalshi?.liveOrders ?? 0,
         lastSynced: new Date().toLocaleTimeString(),
-        error: data?.balance ? null : 'Live account sync returned no balance. Check your live API credentials.',
+        error: kalshiError ? String(kalshiError) : (kalshi?.balance ? null : 'Kalshi: No balance returned. Check API credentials.'),
       });
-      toast.success(`Synced ${data?.synced ?? 0} positions`);
+
+      if (poly) {
+        const polyBal = poly.balance;
+        const polyAvailable = polyBal != null
+          ? (typeof polyBal === 'number' ? polyBal : Number(polyBal?.balance ?? polyBal?.available ?? 0))
+          : null;
+        persistPolyBalance({
+          available: polyAvailable,
+          livePositions: Array.isArray(poly.positions) ? poly.positions.length : 0,
+          liveOrders: poly.openOrders ?? 0,
+          lastSynced: new Date().toLocaleTimeString(),
+          error: poly.error ?? (poly.errors?.length ? poly.errors.join('; ') : null),
+        });
+      }
+
+      toast.success(`Synced accounts`);
     },
     onError: (err) => {
       const message = err instanceof Error ? err.message : String(err);
@@ -307,6 +353,7 @@ const AutoTradePage = () => {
 
   const openPositions = positions.filter((p) => p.status === 'open');
   const totalPnl = positions.reduce((s, p) => s + (p.pnl ?? 0), 0);
+  const totalPortfolio = (exchangeBalance.available ?? 0) + (exchangeBalance.total ?? 0) + (polyBalance.available ?? 0);
 
   if (!session) {
     return (
