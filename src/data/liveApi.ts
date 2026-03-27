@@ -425,54 +425,70 @@ function buildSignals(markets: Market[], quotes: QuoteSnapshot[]): Signal[] {
 
       const mid = (quote.bestYesBid + quote.bestYesAsk) / 2;
       const momentum = clamp01(Math.abs(0.5 - mid) * 2);
-      const imbalance = clamp01(1 - quote.spread * 20);
-      const expectedNetEdge = Math.max(0, 0.02 - quote.spread / 2);
-      const score = Math.round((momentum * 0.4 + imbalance * 0.4 + expectedNetEdge * 10) * 100);
-      const confidence = Math.min(95, Math.max(15, Math.round((market.liquidityScore / 100) * 90)));
+      const imbalance = clamp01(1 - quote.spread * 10);
+      const expectedNetEdge = Math.max(0, 0.03 - quote.spread / 2);
+      const score = Math.round((momentum * 0.35 + imbalance * 0.35 + expectedNetEdge * 8 + (market.liquidityScore / 100) * 0.3) * 100);
+      const confidence = Math.min(95, Math.max(20, Math.round((market.liquidityScore / 100) * 80 + momentum * 15)));
 
-      // Signal direction logic
+      // Signal direction logic - more aggressive thresholds
       let direction: SignalDirection = 'PASS';
       let action: Signal['action'] = 'wait';
-      let thesis = 'No clear edge detected. Wide spread or weak liquidity.';
+      let thesis = 'No clear edge detected.';
       let sentimentBias: Signal['sentimentBias'] = 'neutral';
 
       const spreadPct = quote.spread;
-      const hasEdge = expectedNetEdge > 0.005;
-      const hasLiquidity = market.liquidityScore > 40;
-      const tightSpread = spreadPct < 0.04;
+      const hasMinLiquidity = market.liquidityScore > 25;
+      const tradableSpread = spreadPct < 0.08; // 8¢ max spread
 
-      if (hasEdge && hasLiquidity && tightSpread) {
-        if (mid >= 0.55) {
+      if (hasMinLiquidity && tradableSpread) {
+        // Strong directional signal: mid clearly above/below 50
+        if (mid >= 0.58) {
           direction = 'YES';
           action = 'paper_buy_yes';
           sentimentBias = 'bullish';
-          thesis = `YES side shows momentum (mid=${(mid * 100).toFixed(1)}¢). Tight spread (${(spreadPct * 100).toFixed(1)}¢) with liquidity score ${market.liquidityScore}. Edge exists at current ask.`;
-        } else if (mid <= 0.45) {
+          thesis = `YES favored at ${(mid * 100).toFixed(0)}¢. Spread ${(spreadPct * 100).toFixed(1)}¢, liquidity ${market.liquidityScore}. Market pricing this event as likely.`;
+        } else if (mid <= 0.42) {
           direction = 'NO';
           action = 'paper_buy_no';
           sentimentBias = 'bearish';
-          thesis = `NO side favored (YES mid=${(mid * 100).toFixed(1)}¢). Market pricing event as unlikely. Spread tight enough for entry.`;
+          thesis = `NO favored (YES only ${(mid * 100).toFixed(0)}¢). Market pricing event as unlikely. Buy NO side for value.`;
+        } else if (mid >= 0.52) {
+          // Slight YES lean
+          direction = 'YES';
+          action = 'paper_buy_yes';
+          sentimentBias = 'bullish';
+          thesis = `Slight YES lean at ${(mid * 100).toFixed(0)}¢. ${spreadPct < 0.03 ? 'Tight spread supports entry.' : 'Watch for spread tightening.'} Liq: ${market.liquidityScore}.`;
+        } else if (mid <= 0.48) {
+          // Slight NO lean
+          direction = 'NO';
+          action = 'paper_buy_no';
+          sentimentBias = 'bearish';
+          thesis = `Slight NO lean (YES at ${(mid * 100).toFixed(0)}¢). ${spreadPct < 0.03 ? 'Tight spread supports entry.' : 'Monitor for confirmation.'} Liq: ${market.liquidityScore}.`;
         } else {
-          // Near 50/50 - check for any tilt
-          if (market.priceChange1h > 0.02) {
-            direction = 'YES';
-            action = 'paper_buy_yes';
-            sentimentBias = 'bullish';
-            thesis = `Coin-flip market but momentum tilting YES (1h change: +${(market.priceChange1h * 100).toFixed(1)}¢). Worth a momentum play.`;
-          } else if (market.priceChange1h < -0.02) {
-            direction = 'NO';
-            action = 'paper_buy_no';
-            sentimentBias = 'bearish';
-            thesis = `Coin-flip market with downward momentum (1h change: ${(market.priceChange1h * 100).toFixed(1)}¢). Fade the YES side.`;
+          // True coin flip — look for momentum or just pass
+          if (Math.abs(market.priceChange1h) > 0.01) {
+            direction = market.priceChange1h > 0 ? 'YES' : 'NO';
+            action = market.priceChange1h > 0 ? 'paper_buy_yes' : 'paper_buy_no';
+            sentimentBias = market.priceChange1h > 0 ? 'bullish' : 'bearish';
+            thesis = `Coin-flip market with ${market.priceChange1h > 0 ? 'upward' : 'downward'} momentum (${(market.priceChange1h * 100).toFixed(1)}¢/1h). Momentum play.`;
           } else {
             direction = 'PASS';
-            thesis = `Market near 50/50 with no directional catalyst. Spread: ${(spreadPct * 100).toFixed(1)}¢. Wait for movement.`;
+            thesis = `True 50/50, no momentum, spread ${(spreadPct * 100).toFixed(1)}¢. Wait for catalyst.`;
           }
         }
-      } else if (!hasLiquidity) {
-        thesis = `Low liquidity (score: ${market.liquidityScore}). Risk of slippage exceeds potential edge.`;
-      } else if (!tightSpread) {
-        thesis = `Spread too wide (${(spreadPct * 100).toFixed(1)}¢). Entry cost would eat edge.`;
+      } else if (!hasMinLiquidity) {
+        // Even low-liq markets get a direction if price is extreme
+        if (mid >= 0.70) {
+          direction = 'YES'; action = 'paper_buy_yes'; sentimentBias = 'bullish';
+          thesis = `Strong YES at ${(mid * 100).toFixed(0)}¢ but low liquidity (${market.liquidityScore}). Caution on size.`;
+        } else if (mid <= 0.30) {
+          direction = 'NO'; action = 'paper_buy_no'; sentimentBias = 'bearish';
+          thesis = `Strong NO signal (YES at ${(mid * 100).toFixed(0)}¢) but low liquidity (${market.liquidityScore}). Small size only.`;
+        } else {
+          thesis = `Low liquidity (${market.liquidityScore}). Slippage risk too high for edge capture.`;
+        }
+      } else {
+        thesis = `Spread too wide (${(spreadPct * 100).toFixed(1)}¢). Wait for tightening.`;
       }
 
       // Entry/target/invalidation zones
