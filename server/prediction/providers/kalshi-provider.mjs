@@ -51,8 +51,28 @@ export class KalshiProvider extends PredictionMarketProvider {
   }
 
   async listMarkets() {
-    const rows = await this.request('/markets?limit=100&status=open');
-    const markets = Array.isArray(rows?.markets) ? rows.markets : Array.isArray(rows) ? rows : [];
+    const rows = await this.request('/markets?limit=200&status=open');
+    let markets = Array.isArray(rows?.markets) ? rows.markets : Array.isArray(rows) ? rows : [];
+
+    // Filter out multi-leg parlay/MVE markets - these have zero liquidity and junk titles
+    markets = markets.filter(m => {
+      const ticker = m.ticker ?? '';
+      // Skip MVE (multi-variate extended) markets - they're parlays with no independent liquidity
+      if (ticker.startsWith('KXMVE')) return false;
+      // Skip markets with zero bid AND zero ask
+      const yesBid = Number(m.yes_bid_dollars ?? m.yes_bid ?? 0);
+      const yesAsk = Number(m.yes_ask_dollars ?? m.yes_ask ?? 0);
+      if (yesBid === 0 && yesAsk === 0) return false;
+      // Skip zero-liquidity markets
+      const liq = Number(m.liquidity_dollars ?? m.liquidity ?? 0);
+      const vol = Number(m.volume_fp ?? m.volume ?? 0);
+      if (liq === 0 && vol === 0) return false;
+      // Skip titles that are just comma-separated parlays
+      const title = m.title ?? '';
+      if ((title.match(/,/g) || []).length > 3) return false;
+      return true;
+    });
+
     return markets.map((row) => toNormalizedMarket(row, 'kalshi'));
   }
 

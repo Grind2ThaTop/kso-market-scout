@@ -53,9 +53,64 @@ export class PolymarketProvider extends PredictionMarketProvider {
   }
 
   async listMarkets() {
-    const rows = await this.gamma('/markets?limit=100&active=true&closed=false&archived=false');
-    const markets = Array.isArray(rows) ? rows : rows?.data ?? [];
-    return markets.map((row) => toNormalizedMarket(row, 'polymarket'));
+    // Fetch active, non-closed, non-archived markets sorted by volume (most liquid first)
+    // Use multiple strategies to get good data
+    const now = new Date();
+    const minEndDate = now.toISOString().split('T')[0]; // today
+
+    const urls = [
+      `/markets?limit=100&active=true&closed=false&archived=false&order=volume&ascending=false&end_date_min=${minEndDate}`,
+      `/markets?limit=100&active=true&closed=false&archived=false&order=liquidity&ascending=false`,
+    ];
+
+    let allMarkets = [];
+    for (const url of urls) {
+      try {
+        const rows = await this.gamma(url);
+        const markets = Array.isArray(rows) ? rows : rows?.data ?? [];
+        allMarkets.push(...markets);
+      } catch {
+        // Try next URL
+      }
+    }
+
+    // Deduplicate by ID
+    const seen = new Set();
+    allMarkets = allMarkets.filter(m => {
+      const id = m.id ?? m.conditionId;
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+
+    // Server-side filtering: remove closed, resolved, zero-volume, old markets
+    const filtered = allMarkets.filter(m => {
+      // Must not be closed
+      if (m.closed === true) return false;
+      // Must be active
+      if (m.active === false) return false;
+      // Must have some volume or liquidity
+      const vol = Number(m.volumeNum ?? m.volume ?? 0);
+      const liq = Number(m.liquidityNum ?? m.liquidity ?? 0);
+      if (vol === 0 && liq === 0) return false;
+      // End date must be in the future
+      const endDate = m.endDate ?? m.end_date;
+      if (endDate) {
+        const endMs = new Date(endDate).getTime();
+        if (Number.isFinite(endMs) && endMs < Date.now()) return false;
+      }
+      // Must have some price data (not fully resolved)
+      const prices = m.outcomePrices;
+      if (prices) {
+        try {
+          const parsed = typeof prices === 'string' ? JSON.parse(prices) : prices;
+          if (Array.isArray(parsed) && parsed.every(p => Number(p) === 0)) return false;
+        } catch {}
+      }
+      return true;
+    });
+
+    return filtered.map((row) => toNormalizedMarket(row, 'polymarket'));
   }
 
   async getMarketDetails(marketId) { return this.gamma(`/markets/${marketId}`); }
