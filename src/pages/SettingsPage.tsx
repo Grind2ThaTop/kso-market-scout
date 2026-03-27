@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link2, RefreshCw, Shield } from 'lucide-react';
 import { integrationsApi } from '@/integrations/api';
-import { Provider, ProviderStatus } from '@/integrations/types';
+import { IntegrationRecord, Provider, ProviderStatus } from '@/integrations/types';
 import { useToast } from '@/hooks/use-toast';
 
 const PROVIDERS: { id: Provider; title: string; envs: Array<'prod' | 'demo'>; help: Record<string, string> }[] = [
@@ -47,14 +47,13 @@ const SettingsPageContent = () => {
   const { data, isLoading } = useQuery({ queryKey: ['integrations'], queryFn: integrationsApi.list });
 
   const integrationMap = useMemo(() => {
-    const map = new Map<Provider, { credentials?: Record<string, string>; enabled?: boolean; environment?: 'prod' | 'demo' }>();
-    for (const row of data?.providers ?? []) map.set(row.provider, row.integration);
+    const map = new Map<Provider, IntegrationRecord | null>();
+    for (const row of data?.providers ?? []) map.set(row.provider, row.integration ?? null);
     return map;
   }, [data]);
 
   useEffect(() => {
     if (!data?.providers?.length) return;
-
     setForms((prev) => {
       const next = { ...prev };
       for (const { provider, integration } of data.providers) {
@@ -111,7 +110,7 @@ const SettingsPageContent = () => {
 
       {PROVIDERS.map((provider) => {
         const current = integrationMap.get(provider.id);
-        const status = (current?.status ?? 'disconnected') as ProviderStatus;
+        const status: ProviderStatus = current?.status ?? 'disconnected';
         return (
           <div key={provider.id} className="bg-card border border-border rounded-lg p-4 space-y-4">
             <div className="flex justify-between items-start">
@@ -147,7 +146,9 @@ const SettingsPageContent = () => {
               )}
             </div>
 
-            <div className="text-xs text-muted-foreground">Last successful sync: {current?.lastSuccessfulSyncAt ? new Date(current.lastSuccessfulSyncAt).toLocaleString() : 'N/A'}</div>
+            <div className="text-xs text-muted-foreground">
+              Last successful sync: {current?.lastSuccessfulSyncAt ? new Date(current.lastSuccessfulSyncAt).toLocaleString() : 'N/A'}
+            </div>
             {current?.lastError ? <div className="text-xs text-loss">Last error: {current.lastError}</div> : null}
 
             <div className="flex gap-2">
