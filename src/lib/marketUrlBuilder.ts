@@ -3,12 +3,15 @@ import type { Market } from '@/data/types';
 const buildPolymarketUrl = (market: Pick<Market, 'marketSlug'>): string | null => {
   const slug = market.marketSlug?.trim();
   if (!slug) return null;
-  return `https://polymarket.com/market/${slug}`;
+  return `https://polymarket.com/event/${slug}`;
 };
 
 const buildKalshiUrl = (market: Pick<Market, 'eventSlug' | 'marketSlug'>): string | null => {
-  if (!market.eventSlug || !market.marketSlug) return null;
-  return `https://kalshi.com/markets/${market.eventSlug}/${market.marketSlug}`;
+  const eventSlug = market.eventSlug?.trim();
+  const marketSlug = market.marketSlug?.trim();
+  if (eventSlug && marketSlug) return `https://kalshi.com/markets/${eventSlug}/${marketSlug}`;
+  if (marketSlug) return `https://kalshi.com/markets/${marketSlug}`;
+  return null;
 };
 
 export const buildMarketUrl = (market: Pick<Market, 'platform' | 'marketSlug' | 'eventSlug'>): string | null => {

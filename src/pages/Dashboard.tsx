@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { TrendingUp, Target, AlertTriangle, DollarSign, Activity, WifiOff, ExternalLink } from 'lucide-react';
+import { TrendingUp, Target, AlertTriangle, DollarSign, Activity, WifiOff } from 'lucide-react';
 import { useMarketScanner } from '@/hooks/useMarketScanner';
 import { scannerConfig } from '@/data/liveApi';
 import { buildOutcomeTradeUrl } from '@/lib/marketUrlBuilder';
@@ -49,8 +49,16 @@ const Dashboard = () => {
     <div className="flex-1 overflow-auto p-4 space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-bold">Live Scanner Dashboard</h1>
-        <span className="text-xs text-muted-foreground">Last refresh: {new Date(data!.fetchedAt).toLocaleString()}</span>
+        <span className="text-xs text-muted-foreground">
+          Last refresh: {new Date(data!.fetchedAt).toLocaleString()} · Source: {data?.source === 'demo' ? 'Demo fallback' : 'Live exchange feed'}
+        </span>
       </div>
+
+      {data?.source === 'demo' && (
+        <div className="bg-warn/10 border border-warn/30 rounded-lg p-3 text-xs text-warn">
+          Live exchange APIs are unavailable, so links and prices are simulated. Configure integrations or VITE_MARKET_DATA_URL for real-time markets.
+        </div>
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
         {[

@@ -54,6 +54,11 @@ const MarketDetail = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2 bg-card border border-border rounded-lg p-4 space-y-2">
           <h2 className="text-sm font-semibold text-foreground">Live Quote</h2>
+          {data?.source === 'demo' && (
+            <div className="bg-warn/10 border border-warn/30 rounded p-2 text-[11px] text-warn">
+              Demo fallback active. This market is simulated and external links may not resolve to real listings.
+            </div>
+          )}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
             <QuoteCell label="YES Bid" value={quote.bestYesBid.toFixed(4)} tone="text-profit" />
             <QuoteCell label="YES Ask" value={quote.bestYesAsk.toFixed(4)} tone="text-loss" />
