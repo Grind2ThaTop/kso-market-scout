@@ -193,6 +193,10 @@ const AutoTradePage = () => {
     },
   });
 
+  const [exchangeBalance, setExchangeBalance] = useState<{ available: number | null; total: number | null; livePositions: number; liveOrders: number; lastSynced: string | null }>({
+    available: null, total: null, livePositions: 0, liveOrders: 0, lastSynced: null,
+  });
+
   const syncMutation = useMutation({
     mutationFn: async () => {
       const { data, error } = await supabase.functions.invoke('sync-positions');
@@ -202,7 +206,14 @@ const AutoTradePage = () => {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['positions'] });
       queryClient.invalidateQueries({ queryKey: ['order-history'] });
-      toast.success(`Synced ${data?.synced ?? 0} positions · Balance: $${data?.balance?.available?.toFixed(2) ?? '—'}`);
+      setExchangeBalance({
+        available: data?.balance?.available ?? null,
+        total: data?.balance?.total ?? null,
+        livePositions: data?.livePositions ?? 0,
+        liveOrders: data?.liveOrders ?? 0,
+        lastSynced: new Date().toLocaleTimeString(),
+      });
+      toast.success(`Synced ${data?.synced ?? 0} positions`);
     },
     onError: (err) => toast.error(`Sync failed: ${String(err)}`),
   });
