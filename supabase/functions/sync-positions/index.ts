@@ -1,10 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
-
-function uint8ToBase64(arr: Uint8Array): string {
-  let binary = "";
-  for (const byte of arr) binary += String.fromCharCode(byte);
-  return btoa(binary);
-}
+import { constants, createSign } from "node:crypto";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,44 +9,62 @@ const corsHeaders = {
 
 const KALSHI_BASE = "https://api.elections.kalshi.com/trade-api/v2";
 
-async function signKalshi(
+/** Normalize a PEM key that may have lost its line breaks */
+function normalizePem(raw: string): string {
+  // If it already looks like a proper PEM with line breaks, return as-is
+  if (raw.includes("-----BEGIN") && raw.split("\n").length > 3) return raw;
+  
+  // Strip any existing headers/whitespace, then re-wrap
+  const isRsa = raw.includes("RSA PRIVATE KEY");
+  const header = isRsa ? "-----BEGIN RSA PRIVATE KEY-----" : "-----BEGIN PRIVATE KEY-----";
+  const footer = isRsa ? "-----END RSA PRIVATE KEY-----" : "-----END PRIVATE KEY-----";
+  const b64 = raw
+    .replace(/-----BEGIN (RSA )?PRIVATE KEY-----/g, "")
+    .replace(/-----END (RSA )?PRIVATE KEY-----/g, "")
+    .replace(/\s/g, "");
+  // Re-wrap at 64 chars per line
+  const lines = b64.match(/.{1,64}/g) || [];
+  return [header, ...lines, footer].join("\n");
+}
+
+function signKalshi(
   apiKeyId: string,
   privateKeyPem: string,
   method: string,
   path: string,
   body: string = ""
-): Promise<Record<string, string>> {
+): Record<string, string> {
   const timestamp = String(Date.now());
   const payload = `${timestamp}${method.toUpperCase()}${path}${body}`;
-  const pemBody = privateKeyPem
-    .replace(/-----BEGIN (RSA )?PRIVATE KEY-----/g, "")
-    .replace(/-----END (RSA )?PRIVATE KEY-----/g, "")
-    .replace(/\s/g, "");
-  const keyData = Uint8Array.from(atob(pemBody), (c) => c.charCodeAt(0));
-  const key = await crypto.subtle.importKey(
-    "pkcs8",
-    keyData,
-    { name: "RSA-PSS", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const sig = await crypto.subtle.sign(
-    { name: "RSA-PSS", saltLength: 32 },
-    key,
-    new TextEncoder().encode(payload)
+  const pem = normalizePem(privateKeyPem);
+  console.log("PEM first 80 chars:", pem.substring(0, 80));
+  console.log("PEM line count:", pem.split("\n").length);
+  console.log("PEM has BEGIN:", pem.includes("-----BEGIN"));
+  const signer = createSign("RSA-SHA256");
+  signer.update(payload);
+  const signature = signer.sign(
+    {
+      key: pem,
+      padding: constants.RSA_PKCS1_PSS_PADDING,
+      saltLength: constants.RSA_PSS_SALTLEN_DIGEST,
+    },
+    "base64"
   );
   return {
     "KALSHI-ACCESS-KEY": apiKeyId,
-    "KALSHI-ACCESS-SIGNATURE": uint8ToBase64(new Uint8Array(sig)),
+    "KALSHI-ACCESS-SIGNATURE": signature,
     "KALSHI-ACCESS-TIMESTAMP": timestamp,
     "Content-Type": "application/json",
   };
 }
 
 async function kalshiGet(apiKeyId: string, privateKey: string, path: string) {
-  const headers = await signKalshi(apiKeyId, privateKey, "GET", path);
+  const headers = signKalshi(apiKeyId, privateKey, "GET", path);
   const res = await fetch(`${KALSHI_BASE}${path}`, { headers });
-  if (!res.ok) throw new Error(`Kalshi GET ${path} [${res.status}]`);
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Kalshi GET ${path} [${res.status}]: ${body}`);
+  }
   return res.json();
 }
 
@@ -100,6 +113,10 @@ Deno.serve(async (req) => {
       kalshiGet(KALSHI_API_KEY_ID, KALSHI_PRIVATE_KEY, "/portfolio/positions?limit=100"),
       kalshiGet(KALSHI_API_KEY_ID, KALSHI_PRIVATE_KEY, "/portfolio/orders?status=open"),
     ]);
+
+    if (balanceRes.status === "rejected") console.error("Balance fetch failed:", balanceRes.reason);
+    if (positionsRes.status === "rejected") console.error("Positions fetch failed:", positionsRes.reason);
+    if (ordersRes.status === "rejected") console.error("Orders fetch failed:", ordersRes.reason);
 
     const balance = balanceRes.status === "fulfilled" ? balanceRes.value : null;
     const livePositions = positionsRes.status === "fulfilled" ? positionsRes.value : null;
