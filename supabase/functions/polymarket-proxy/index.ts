@@ -12,23 +12,32 @@ const CLOB_API = "https://clob.polymarket.com";
 
 async function dataGet(path: string, params: Record<string, string> = {}) {
   const search = new URLSearchParams(params).toString();
-  const suffix = `${path}${search ? `?${search}` : ""}`;
   const errors: string[] = [];
 
-  // Try data-api first (v1 endpoints), then gamma as fallback
-  for (const base of [DATA_API, GAMMA_API]) {
-    const url = `${base}${suffix}`;
-    try {
-      const res = await fetch(url, {
-        headers: { Accept: "application/json" },
-      });
-      if (!res.ok) {
-        errors.push(`${url} -> ${res.status}`);
-        continue;
+  // Try multiple path variants: /v1/leaderboard, /leaderboard, etc.
+  const pathVariants = [path];
+  if (path.startsWith("/v1/")) {
+    pathVariants.push(path.replace("/v1/", "/"));
+  } else if (!path.startsWith("/v1/")) {
+    pathVariants.push(`/v1${path}`);
+  }
+
+  for (const p of pathVariants) {
+    const suffix = `${p}${search ? `?${search}` : ""}`;
+    for (const base of [DATA_API, GAMMA_API]) {
+      const url = `${base}${suffix}`;
+      try {
+        const res = await fetch(url, {
+          headers: { Accept: "application/json" },
+        });
+        if (!res.ok) {
+          errors.push(`${url} -> ${res.status}`);
+          continue;
+        }
+        return await res.json();
+      } catch (err: any) {
+        errors.push(`${url} -> ${err?.message ?? String(err)}`);
       }
-      return await res.json();
-    } catch (err: any) {
-      errors.push(`${url} -> ${err?.message ?? String(err)}`);
     }
   }
   throw new Error(`All Polymarket APIs failed for ${path}: ${errors.join(" | ")}`);
