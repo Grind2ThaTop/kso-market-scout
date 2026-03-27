@@ -51,7 +51,10 @@ async function signKalshi(
 async function kalshiGet(apiKeyId: string, privateKey: string, path: string) {
   const headers = await signKalshi(apiKeyId, privateKey, "GET", path);
   const res = await fetch(`${KALSHI_BASE}${path}`, { headers });
-  if (!res.ok) throw new Error(`Kalshi GET ${path} [${res.status}]`);
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Kalshi GET ${path} [${res.status}]: ${body}`);
+  }
   return res.json();
 }
 
