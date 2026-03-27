@@ -11,6 +11,7 @@ import Journal from "@/pages/Journal";
 import SettingsPage from "@/pages/SettingsPage";
 import SmartMoneyTracker from "@/pages/SmartMoneyTracker";
 import TraderProfilePage from "@/pages/TraderProfilePage";
+import AutoTradePage from "@/pages/AutoTradePage";
 import AppLayout from "@/components/AppLayout";
 import NotFound from "@/pages/NotFound";
 
@@ -31,6 +32,7 @@ const AppRoutes = () => {
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/smart-money" element={<SmartMoneyTracker />} />
         <Route path="/smart-money/trader/:traderId" element={<TraderProfilePage />} />
+        <Route path="/auto-trade" element={<AutoTradePage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </AppLayout>
