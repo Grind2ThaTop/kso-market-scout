@@ -6,7 +6,7 @@ import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Zap, ShieldAlert, TrendingUp, TrendingDown, Activity, Power, AlertTriangle, Clock, DollarSign, Target } from 'lucide-react';
+import { Zap, ShieldAlert, TrendingUp, TrendingDown, Activity, Power, AlertTriangle, Clock, DollarSign, Target, RefreshCw, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface AutoTradeSettings {
@@ -193,6 +193,20 @@ const AutoTradePage = () => {
     },
   });
 
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('sync-positions');
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['positions'] });
+      queryClient.invalidateQueries({ queryKey: ['order-history'] });
+      toast.success(`Synced ${data?.synced ?? 0} positions · Balance: $${data?.balance?.available?.toFixed(2) ?? '—'}`);
+    },
+    onError: (err) => toast.error(`Sync failed: ${String(err)}`),
+  });
+
   const openPositions = positions.filter(p => p.status === 'open');
   const closedPositions = positions.filter(p => p.status !== 'open');
   const totalPnl = positions.reduce((s, p) => s + (p.pnl ?? 0), 0);
@@ -219,6 +233,18 @@ const AutoTradePage = () => {
           <Zap className="w-5 h-5 text-primary" /> Auto-Trade Engine
         </h1>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => syncMutation.mutate()}
+            disabled={syncMutation.isPending}
+          >
+            <RefreshCw className={`w-3.5 h-3.5 mr-1 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
+            Sync
+          </Button>
+          {!localSettings.paper_mode && (
+            <Badge variant="outline" className="text-profit border-profit/40">LIVE</Badge>
+          )}
           {localSettings.paper_mode && (
             <Badge variant="outline" className="text-warning border-warning/40">PAPER MODE</Badge>
           )}
