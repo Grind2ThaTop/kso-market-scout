@@ -5,11 +5,7 @@ import {
   TraderPosition,
   TraderProfile,
 } from "@/lib/trader-types";
-
-const POLYMARKET_PUBLIC_APIS = [
-  "https://data-api.polymarket.com",
-  "https://gamma-api.polymarket.com",
-];
+import { supabase } from "@/integrations/supabase/client";
 
 const safeNumber = (value: unknown): number | undefined => {
   if (typeof value === "number") return value;
@@ -18,6 +14,30 @@ const safeNumber = (value: unknown): number | undefined => {
     return Number.isFinite(parsed) ? parsed : undefined;
   }
   return undefined;
+};
+
+const invokeProxy = async (action: string, params: Record<string, string> = {}) => {
+  const search = new URLSearchParams({ action, ...params }).toString();
+
+  const session = (await supabase.auth.getSession()).data.session;
+  if (!session) throw new Error("Not authenticated — sign in to view Smart Money data.");
+
+  const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+  const url = `https://${projectId}.supabase.co/functions/v1/polymarket-proxy?${search}`;
+
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+      apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+    },
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`Polymarket proxy error [${response.status}]: ${body}`);
+  }
+
+  return response.json();
 };
 
 const parseLeaderboardEntry = (item: any, rank: number): TraderLeaderboardEntry => {
@@ -40,33 +60,6 @@ const parseLeaderboardEntry = (item: any, rank: number): TraderLeaderboardEntry 
     rank,
     volume,
   };
-};
-
-const getJson = async (path: string, params: Record<string, string | number | undefined> = {}) => {
-  const search = new URLSearchParams();
-  Object.entries(params).forEach(([key, value]) => {
-    if (value != null) search.set(key, String(value));
-  });
-
-  const suffix = `${path}${search.toString() ? `?${search}` : ""}`;
-  const errors: string[] = [];
-
-  for (const baseUrl of POLYMARKET_PUBLIC_APIS) {
-    const url = `${baseUrl}${suffix}`;
-    try {
-      const response = await fetch(url);
-      if (!response.ok) {
-        errors.push(`${url} -> HTTP ${response.status}`);
-        continue;
-      }
-
-      return response.json();
-    } catch (error: any) {
-      errors.push(`${url} -> ${error?.message ?? String(error)}`);
-    }
-  }
-
-  throw new Error(`Polymarket public API request failed for ${path}. Tried: ${errors.join(" | ")}`);
 };
 
 const normalizePosition = (item: any): TraderPosition => ({
@@ -96,13 +89,13 @@ const normalizeActivity = (item: any, index: number): TraderActivity => ({
 
 export const polymarketProvider: TraderDataProvider = {
   async getTopTraders(limit = 25): Promise<TraderLeaderboardEntry[]> {
-    const payload = await getJson("/leaderboard", { limit });
+    const payload = await invokeProxy("top-traders", { limit: String(limit) });
     const rows = Array.isArray(payload) ? payload : payload?.leaders ?? payload?.data ?? [];
     return rows.map((item: any, index: number) => parseLeaderboardEntry(item, index + 1));
   },
 
   async getWorstTraders(limit = 25): Promise<TraderLeaderboardEntry[]> {
-    const payload = await getJson("/leaderboard", { limit: 200 });
+    const payload = await invokeProxy("worst-traders");
     const rows = Array.isArray(payload) ? payload : payload?.leaders ?? payload?.data ?? [];
 
     return rows
@@ -114,13 +107,13 @@ export const polymarketProvider: TraderDataProvider = {
   },
 
   async getTraderProfile(traderId: string): Promise<TraderProfile> {
-    const [profile, positions, activity, value, totalMarkets] = await Promise.all([
-      getJson("/public-profile", { address: traderId }),
-      getJson("/positions", { user: traderId, limit: 100 }),
-      getJson("/activity", { user: traderId, limit: 100 }),
-      getJson("/value", { user: traderId }),
-      getJson("/traded-markets", { user: traderId }),
-    ]);
+    const raw = await invokeProxy("profile", { address: traderId });
+
+    const profile = raw?.profile ?? {};
+    const positions = raw?.positions;
+    const activity = raw?.activity;
+    const value = raw?.value;
+    const totalMarkets = raw?.totalMarkets;
 
     const openPositions = (Array.isArray(positions) ? positions : positions?.data ?? []).map(normalizePosition);
     const recentActivity = (Array.isArray(activity) ? activity : activity?.data ?? []).map(normalizeActivity);
