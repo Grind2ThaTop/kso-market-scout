@@ -101,6 +101,10 @@ Deno.serve(async (req) => {
       kalshiGet(KALSHI_API_KEY_ID, KALSHI_PRIVATE_KEY, "/portfolio/orders?status=open"),
     ]);
 
+    if (balanceRes.status === "rejected") console.error("Balance fetch failed:", balanceRes.reason);
+    if (positionsRes.status === "rejected") console.error("Positions fetch failed:", positionsRes.reason);
+    if (ordersRes.status === "rejected") console.error("Orders fetch failed:", ordersRes.reason);
+
     const balance = balanceRes.status === "fulfilled" ? balanceRes.value : null;
     const livePositions = positionsRes.status === "fulfilled" ? positionsRes.value : null;
     const liveOrders = ordersRes.status === "fulfilled" ? ordersRes.value : null;
