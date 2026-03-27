@@ -4,6 +4,11 @@ import { buildMarketUrl } from '@/lib/marketUrlBuilder';
 const DEFAULT_POLL_MS = 15000;
 
 const clamp01 = (value: number) => Math.max(0.01, Math.min(0.99, value));
+const normalizePrice = (value: number): number => {
+  if (value > 1 && value <= 100) return value / 100;
+  if (value > 100 && value <= 10000) return value / 10000;
+  return value;
+};
 
 const toNumber = (value: unknown): number | null => {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -35,22 +40,38 @@ const normalizeCategory = (value: unknown): Market['category'] => {
 };
 
 const inferQuote = (row: Record<string, unknown>) => {
-  const bid =
+  const rawBid =
     toNumber(row.bestYesBid) ??
     toNumber(row.bestBid) ??
     toNumber(row.yesBid) ??
+    toNumber(row.yes_bid) ??
+    toNumber(row.bid) ??
     toNumber(row.lastTradePrice) ??
-    toNumber(row.last_price);
-  const ask =
+    toNumber(row.last_price) ??
+    toNumber(row.final_last_traded_price);
+  const rawAsk =
     toNumber(row.bestYesAsk) ??
     toNumber(row.bestAsk) ??
     toNumber(row.yesAsk) ??
-    bid;
+    toNumber(row.yes_ask) ??
+    toNumber(row.ask) ??
+    rawBid;
 
-  if (bid == null || ask == null) return null;
+  if (rawBid == null || rawAsk == null) return null;
 
-  const bestYesBid = clamp01(Math.min(bid, ask));
-  const bestYesAsk = clamp01(Math.max(bid, ask));
+  const bid = normalizePrice(rawBid);
+  const ask = normalizePrice(rawAsk);
+  const noBid = toNumber(row.bestNoBid) ?? toNumber(row.noBid) ?? toNumber(row.no_bid);
+  const noAsk = toNumber(row.bestNoAsk) ?? toNumber(row.noAsk) ?? toNumber(row.no_ask);
+
+  const normalizedNoBid = noBid == null ? null : normalizePrice(noBid);
+  const normalizedNoAsk = noAsk == null ? null : normalizePrice(noAsk);
+
+  const resolvedBid = normalizedNoAsk != null ? Math.max(0.01, 1 - normalizedNoAsk) : bid;
+  const resolvedAsk = normalizedNoBid != null ? Math.min(0.99, 1 - normalizedNoBid) : ask;
+
+  const bestYesBid = clamp01(Math.min(resolvedBid, resolvedAsk));
+  const bestYesAsk = clamp01(Math.max(resolvedBid, resolvedAsk));
   return {
     bestYesBid,
     bestYesAsk,
