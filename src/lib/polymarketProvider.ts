@@ -18,13 +18,7 @@ const safeNumber = (value: unknown): number | undefined => {
 
 const invokeProxy = async (action: string, params: Record<string, string> = {}) => {
   const search = new URLSearchParams({ action, ...params }).toString();
-  const { data, error } = await supabase.functions.invoke("polymarket-proxy", {
-    body: null,
-    method: "GET",
-    headers: {},
-  });
 
-  // supabase.functions.invoke doesn't support query params, so we use fetch directly
   const session = (await supabase.auth.getSession()).data.session;
   if (!session) throw new Error("Not authenticated — sign in to view Smart Money data.");
 
