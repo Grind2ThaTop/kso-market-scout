@@ -7,7 +7,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const KALSHI_BASE = "https://trading-api.kalshi.com/trade-api/v2";
+const KALSHI_BASE = "https://api.elections.kalshi.com/trade-api/v2";
 
 /** Normalize a PEM key that may have lost its line breaks */
 function normalizePem(raw: string): string {
