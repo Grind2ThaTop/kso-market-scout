@@ -21,7 +21,8 @@ export class KalshiProvider extends PredictionMarketProvider {
     }
     const timestamp = `${Date.now()}`;
     const pathWithoutQuery = path.split('?')[0];
-    const payload = `${timestamp}${method.toUpperCase()}${pathWithoutQuery}${body}`;
+    const signedPath = `/trade-api/v2${pathWithoutQuery}`;
+    const payload = `${timestamp}${method.toUpperCase()}${signedPath}${body}`;
     const signer = createSign('RSA-SHA256');
     signer.update(payload);
     const signature = signer.sign({
