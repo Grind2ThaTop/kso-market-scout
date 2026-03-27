@@ -66,6 +66,14 @@ interface ExchangeBalanceState {
   error: string | null;
 }
 
+interface PolymarketBalanceState {
+  available: number | null;
+  livePositions: number;
+  liveOrders: number;
+  lastSynced: string | null;
+  error: string | null;
+}
+
 const defaultSettings: Omit<AutoTradeSettings, 'id' | 'user_id'> = {
   enabled: false,
   kill_switch: false,
@@ -80,10 +88,19 @@ const defaultSettings: Omit<AutoTradeSettings, 'id' | 'user_id'> = {
 };
 
 const EXCHANGE_BALANCE_STORAGE_KEY = 'kso_exchange_balance';
+const POLY_BALANCE_STORAGE_KEY = 'kso_poly_balance';
 
 const defaultExchangeBalance: ExchangeBalanceState = {
   available: null,
   total: null,
+  livePositions: 0,
+  liveOrders: 0,
+  lastSynced: null,
+  error: null,
+};
+
+const defaultPolyBalance: PolymarketBalanceState = {
+  available: null,
   livePositions: 0,
   liveOrders: 0,
   lastSynced: null,
@@ -101,10 +118,22 @@ const AutoTradePage = () => {
       return defaultExchangeBalance;
     }
   });
+  const [polyBalance, setPolyBalance] = useState<PolymarketBalanceState>(() => {
+    try {
+      const saved = localStorage.getItem(POLY_BALANCE_STORAGE_KEY);
+      return saved ? { ...defaultPolyBalance, ...JSON.parse(saved) } : defaultPolyBalance;
+    } catch {
+      return defaultPolyBalance;
+    }
+  });
 
   const persistExchangeBalance = (next: ExchangeBalanceState) => {
     setExchangeBalance(next);
     localStorage.setItem(EXCHANGE_BALANCE_STORAGE_KEY, JSON.stringify(next));
+  };
+  const persistPolyBalance = (next: PolymarketBalanceState) => {
+    setPolyBalance(next);
+    localStorage.setItem(POLY_BALANCE_STORAGE_KEY, JSON.stringify(next));
   };
 
   const persistSettings = async (newSettings: typeof defaultSettings) => {
@@ -248,22 +277,68 @@ const AutoTradePage = () => {
 
   const syncMutation = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke('sync-positions');
-      if (error) throw error;
-      return data;
+      // Sync both Kalshi and Polymarket in parallel
+      const [kalshiRes, polyRes] = await Promise.allSettled([
+        supabase.functions.invoke('sync-positions'),
+        supabase.functions.invoke('polymarket-proxy', {
+          body: null,
+          headers: { 'Content-Type': 'application/json' },
+          method: 'GET',
+        }),
+      ]);
+
+      // For polymarket, we need to call with action=live-balance
+      let polyData: any = null;
+      try {
+        const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+        const session = (await supabase.auth.getSession()).data.session;
+        if (session && projectId) {
+          const polyResp = await fetch(
+            `https://${projectId}.supabase.co/functions/v1/polymarket-proxy?action=live-balance`,
+            {
+              headers: {
+                Authorization: `Bearer ${session.access_token}`,
+                apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+              },
+            }
+          );
+          if (polyResp.ok) polyData = await polyResp.json();
+        }
+      } catch {}
+
+      const kalshiData = kalshiRes.status === 'fulfilled' ? kalshiRes.value.data : null;
+      const kalshiError = kalshiRes.status === 'rejected' ? String(kalshiRes.reason) : kalshiData?.error ?? null;
+
+      return { kalshi: kalshiData, kalshiError, poly: polyData };
     },
-    onSuccess: (data) => {
+    onSuccess: ({ kalshi, kalshiError, poly }) => {
       queryClient.invalidateQueries({ queryKey: ['positions'] });
       queryClient.invalidateQueries({ queryKey: ['order-history'] });
+
       persistExchangeBalance({
-        available: data?.balance?.available ?? null,
-        total: data?.balance?.total ?? null,
-        livePositions: data?.livePositions ?? 0,
-        liveOrders: data?.liveOrders ?? 0,
+        available: kalshi?.balance?.available ?? null,
+        total: kalshi?.balance?.total ?? null,
+        livePositions: kalshi?.livePositions ?? 0,
+        liveOrders: kalshi?.liveOrders ?? 0,
         lastSynced: new Date().toLocaleTimeString(),
-        error: data?.balance ? null : 'Live account sync returned no balance. Check your live API credentials.',
+        error: kalshiError ? String(kalshiError) : (kalshi?.balance ? null : 'Kalshi: No balance returned. Check API credentials.'),
       });
-      toast.success(`Synced ${data?.synced ?? 0} positions`);
+
+      if (poly) {
+        const polyBal = poly.balance;
+        const polyAvailable = polyBal != null
+          ? (typeof polyBal === 'number' ? polyBal : Number(polyBal?.balance ?? polyBal?.available ?? 0))
+          : null;
+        persistPolyBalance({
+          available: polyAvailable,
+          livePositions: Array.isArray(poly.positions) ? poly.positions.length : 0,
+          liveOrders: poly.openOrders ?? 0,
+          lastSynced: new Date().toLocaleTimeString(),
+          error: poly.error ?? (poly.errors?.length ? poly.errors.join('; ') : null),
+        });
+      }
+
+      toast.success(`Synced accounts`);
     },
     onError: (err) => {
       const message = err instanceof Error ? err.message : String(err);
@@ -278,6 +353,7 @@ const AutoTradePage = () => {
 
   const openPositions = positions.filter((p) => p.status === 'open');
   const totalPnl = positions.reduce((s, p) => s + (p.pnl ?? 0), 0);
+  const totalPortfolio = (exchangeBalance.available ?? 0) + (exchangeBalance.total ?? 0) + (polyBalance.available ?? 0);
 
   if (!session) {
     return (
@@ -324,48 +400,98 @@ const AutoTradePage = () => {
         <span><strong>Educational & simulation purposes only.</strong> Auto-trading involves significant risk. Paper mode is enabled by default. You are solely responsible for any live trades.</span>
       </div>
 
-      <Card className="border-primary/20">
-        <CardContent className="p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Wallet className="w-4 h-4 text-primary" />
-              <span className="text-sm font-semibold">Kalshi Account</span>
+      {/* Total Portfolio */}
+      {(exchangeBalance.available !== null || polyBalance.available !== null) && (
+        <Card className="border-accent/30 bg-accent/5">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <DollarSign className="w-5 h-5 text-accent" />
+              <span className="text-sm font-bold">Total Portfolio</span>
             </div>
-            {exchangeBalance.lastSynced && (
-              <span className="text-[10px] text-muted-foreground">Last synced: {exchangeBalance.lastSynced}</span>
+            <p className="text-2xl font-bold font-mono text-foreground">${totalPortfolio.toFixed(2)}</p>
+            <p className="text-[10px] text-muted-foreground mt-1">Combined across all connected exchanges</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Exchange Accounts */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {/* Kalshi */}
+        <Card className="border-primary/20">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Wallet className="w-4 h-4 text-primary" />
+                <span className="text-sm font-semibold">Kalshi</span>
+              </div>
+              {exchangeBalance.lastSynced && (
+                <span className="text-[10px] text-muted-foreground">Synced: {exchangeBalance.lastSynced}</span>
+              )}
+            </div>
+            {exchangeBalance.available !== null ? (
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Available</p>
+                  <p className="text-lg font-bold text-foreground">${exchangeBalance.available.toFixed(2)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Total</p>
+                  <p className="text-lg font-bold text-foreground">${exchangeBalance.total?.toFixed(2) ?? '—'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Positions</p>
+                  <p className="text-sm font-semibold">{exchangeBalance.livePositions}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Orders</p>
+                  <p className="text-sm font-semibold">{exchangeBalance.liveOrders}</p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Tap <strong>Sync</strong> to pull live data.</p>
             )}
-          </div>
+            {exchangeBalance.error && (
+              <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">{exchangeBalance.error}</div>
+            )}
+          </CardContent>
+        </Card>
 
-          {exchangeBalance.available !== null ? (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Available</p>
-                <p className="text-lg font-bold text-foreground">${exchangeBalance.available.toFixed(2)}</p>
+        {/* Polymarket */}
+        <Card className="border-primary/20">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Wallet className="w-4 h-4 text-primary" />
+                <span className="text-sm font-semibold">Polymarket</span>
               </div>
-              <div>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Total</p>
-                <p className="text-lg font-bold text-foreground">${exchangeBalance.total?.toFixed(2) ?? '—'}</p>
-              </div>
-              <div>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Live Positions</p>
-                <p className="text-sm font-semibold">{exchangeBalance.livePositions}</p>
-              </div>
-              <div>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Open Orders</p>
-                <p className="text-sm font-semibold">{exchangeBalance.liveOrders}</p>
-              </div>
+              {polyBalance.lastSynced && (
+                <span className="text-[10px] text-muted-foreground">Synced: {polyBalance.lastSynced}</span>
+              )}
             </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">Tap <strong>Sync</strong> to pull your live exchange balance and positions.</p>
-          )}
-
-          {exchangeBalance.error && (
-            <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
-              {exchangeBalance.error}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            {polyBalance.available !== null ? (
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Balance</p>
+                  <p className="text-lg font-bold text-foreground">${polyBalance.available.toFixed(2)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Positions</p>
+                  <p className="text-sm font-semibold">{polyBalance.livePositions}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Open Orders</p>
+                  <p className="text-sm font-semibold">{polyBalance.liveOrders}</p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Tap <strong>Sync</strong> to pull live Polymarket data.</p>
+            )}
+            {polyBalance.error && (
+              <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">{polyBalance.error}</div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <Card className="border-loss/30">
         <CardContent className="p-4 flex items-center justify-between">
