@@ -118,10 +118,22 @@ const AutoTradePage = () => {
       return defaultExchangeBalance;
     }
   });
+  const [polyBalance, setPolyBalance] = useState<PolymarketBalanceState>(() => {
+    try {
+      const saved = localStorage.getItem(POLY_BALANCE_STORAGE_KEY);
+      return saved ? { ...defaultPolyBalance, ...JSON.parse(saved) } : defaultPolyBalance;
+    } catch {
+      return defaultPolyBalance;
+    }
+  });
 
   const persistExchangeBalance = (next: ExchangeBalanceState) => {
     setExchangeBalance(next);
     localStorage.setItem(EXCHANGE_BALANCE_STORAGE_KEY, JSON.stringify(next));
+  };
+  const persistPolyBalance = (next: PolymarketBalanceState) => {
+    setPolyBalance(next);
+    localStorage.setItem(POLY_BALANCE_STORAGE_KEY, JSON.stringify(next));
   };
 
   const persistSettings = async (newSettings: typeof defaultSettings) => {
