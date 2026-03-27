@@ -75,6 +75,12 @@ const SmartMoneyTracker = () => {
     queryFn: () => polymarketProvider.getWorstTraders(25),
   });
 
+  const leaderboardErrorMessage = topQuery.error instanceof Error
+    ? topQuery.error.message
+    : worstQuery.error instanceof Error
+      ? worstQuery.error.message
+      : "Unknown error";
+
   return (
     <div className="flex-1 overflow-auto p-4 space-y-4">
       <div className="glass-card border border-border rounded-lg p-4">
@@ -117,6 +123,7 @@ const SmartMoneyTracker = () => {
         <div className="bg-loss/10 border border-loss/30 rounded-lg p-3 text-sm text-loss flex items-center gap-2">
           <ShieldAlert className="w-4 h-4" />
           Could not load live leaderboard data from Polymarket in this runtime. The module intentionally does not fall back to mock trader data.
+          <span className="text-xs opacity-80">Reason: {leaderboardErrorMessage}</span>
         </div>
       )}
 

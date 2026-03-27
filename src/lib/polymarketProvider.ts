@@ -6,7 +6,10 @@ import {
   TraderProfile,
 } from "@/lib/trader-types";
 
-const POLYMARKET_GAMMA_API = "https://gamma-api.polymarket.com";
+const POLYMARKET_PUBLIC_APIS = [
+  "https://data-api.polymarket.com",
+  "https://gamma-api.polymarket.com",
+];
 
 const safeNumber = (value: unknown): number | undefined => {
   if (typeof value === "number") return value;
@@ -45,14 +48,25 @@ const getJson = async (path: string, params: Record<string, string | number | un
     if (value != null) search.set(key, String(value));
   });
 
-  const url = `${POLYMARKET_GAMMA_API}${path}${search.toString() ? `?${search}` : ""}`;
-  const response = await fetch(url);
+  const suffix = `${path}${search.toString() ? `?${search}` : ""}`;
+  const errors: string[] = [];
 
-  if (!response.ok) {
-    throw new Error(`Polymarket API request failed (${response.status}) for ${path}`);
+  for (const baseUrl of POLYMARKET_PUBLIC_APIS) {
+    const url = `${baseUrl}${suffix}`;
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        errors.push(`${url} -> HTTP ${response.status}`);
+        continue;
+      }
+
+      return response.json();
+    } catch (error: any) {
+      errors.push(`${url} -> ${error?.message ?? String(error)}`);
+    }
   }
 
-  return response.json();
+  throw new Error(`Polymarket public API request failed for ${path}. Tried: ${errors.join(" | ")}`);
 };
 
 const normalizePosition = (item: any): TraderPosition => ({
