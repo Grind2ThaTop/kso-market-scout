@@ -95,7 +95,16 @@ export class MissingDataSourceError extends Error {
 }
 
 export async function fetchScanSnapshot(): Promise<ScanSnapshot> {
-  if (!scannerConfig.apiUrl) throw new MissingDataSourceError();
+  if (!scannerConfig.apiUrl) {
+    // Fall back to demo data when no live API is configured
+    const { DEMO_MARKETS, DEMO_QUOTES, DEMO_SIGNALS } = await import('./demoData');
+    return {
+      fetchedAt: new Date().toISOString(),
+      markets: DEMO_MARKETS,
+      quotes: DEMO_QUOTES,
+      signals: DEMO_SIGNALS,
+    };
+  }
 
   const headers: HeadersInit = { Accept: 'application/json' };
   if (scannerConfig.apiKey) {
