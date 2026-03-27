@@ -429,127 +429,172 @@ function buildSignals(markets: Market[], quotes: QuoteSnapshot[]): Signal[] {
 
       const mid = (quote.bestYesBid + quote.bestYesAsk) / 2;
       const spreadPct = quote.spread;
+      const noMid = 1 - mid;
 
-      // Skip near-resolved markets — no profit room
+      // ── HARD FILTERS ──
+      // Kill anything too close to resolved — no edge left
       if (mid >= 0.85 || mid <= 0.15) return null;
 
-      const momentum = clamp01(Math.abs(0.5 - mid) * 2);
-      const imbalance = clamp01(1 - spreadPct * 10);
+      // ── CORE METRICS ──
+      const yesProfitRoom = Math.max(0, 0.95 - quote.bestYesAsk);   // room if YES wins
+      const noProfitRoom  = Math.max(0, 0.95 - quote.bestNoAsk);    // room if NO wins (buying NO)
+      const takerCost     = 0.03 * 2; // entry + exit taker fee
+      const slipCost      = 0.01 * 2; // entry + exit slippage
+      const totalCost     = takerCost + slipCost + spreadPct;
 
-      // Expected edge: how much profit room after fees & spread
-      const profitRoom = mid >= 0.5
-        ? Math.max(0, 0.95 - mid)  // YES side: room to go up to 95¢
-        : Math.max(0, mid - 0.05); // NO side: room for NO price to rise
-      const expectedNetEdge = Math.max(0, profitRoom - spreadPct - 0.03); // minus spread & fees
+      const yesNetEdge = yesProfitRoom - totalCost;
+      const noNetEdge  = noProfitRoom  - totalCost;
 
-      // Better scoring: reward mid-range prices (20-80¢) where there's actual edge
-      const priceQuality = 1 - Math.abs(0.5 - mid) * 1.5; // peaks at 50¢, drops at extremes
-      const edgeScore = Math.min(1, expectedNetEdge * 10);
-      const score = Math.round(
-        (priceQuality * 0.25 + edgeScore * 0.30 + imbalance * 0.20 + (market.liquidityScore / 100) * 0.25) * 100
-      );
-      const confidence = Math.min(95, Math.max(20, Math.round(
-        (market.liquidityScore / 100) * 50 + priceQuality * 30 + edgeScore * 15
-      )));
+      // ── SHARP MONEY INDICATORS ──
+      // Volume spike: high 24h volume relative to liquidity = sharp action
+      const volumeToLiq = market.liquidityScore > 0 ? market.volume24h / (market.liquidityScore * 100) : 0;
+      const volumeSpike = Math.min(1, volumeToLiq / 5); // normalize, caps at 1
+
+      // Price momentum: recent movement shows directional conviction
+      const momentum1h  = market.priceChange1h;
+      const momentum24h = market.priceChange24h;
+      const momStrength  = Math.min(1, (Math.abs(momentum1h) * 8 + Math.abs(momentum24h) * 3));
+
+      // Spread tightening signal: tight spread = market makers confident in fair value
+      const spreadQuality = spreadPct < 0.02 ? 1 : spreadPct < 0.04 ? 0.75 : spreadPct < 0.06 ? 0.5 : spreadPct < 0.08 ? 0.25 : 0;
+
+      // Whale flag: big volume + directional move = whale positioning
+      const whaleSignal = market.volume24h > 5000 && Math.abs(momentum1h) > 0.02;
+
+      // Time pressure: closer to expiry with movement = sharper signal
+      const hoursToExpiry = (new Date(market.eventEnd).getTime() - Date.now()) / 3_600_000;
+      const timePressure = hoursToExpiry < 6 ? 1 : hoursToExpiry < 24 ? 0.7 : hoursToExpiry < 72 ? 0.4 : 0.15;
+
+      // ── DIRECTION DECISION (NOT just "who's the favorite") ──
+      // Look for DISAGREEMENT between price and sharp indicators
+      // The edge is where sharp money diverges from the public line
 
       let direction: SignalDirection = 'PASS';
-      let action: Signal['action'] = 'wait';
-      let thesis = 'No clear edge detected.';
+      let bestEdge = 0;
+      let thesis = '';
       let sentimentBias: Signal['sentimentBias'] = 'neutral';
+      let action: Signal['action'] = 'wait';
 
-      const hasMinLiquidity = market.liquidityScore > 25;
+      const hasMinLiquidity = market.liquidityScore > 20;
       const tradableSpread = spreadPct < 0.08;
-      const hasProfitRoom = expectedNetEdge > 0.005; // at least 0.5¢ net edge
 
-      if (hasMinLiquidity && tradableSpread && hasProfitRoom) {
-        if (mid >= 0.58 && mid < 0.85) {
+      // YES thesis: sharp money pushing price up + enough room
+      const yesSharpScore = (
+        (momentum1h > 0.005 ? momentum1h * 10 : 0) +   // recent upward push
+        (momentum24h > 0.01 ? momentum24h * 5 : 0) +    // 24h trend up
+        volumeSpike * 0.3 +                               // volume activity
+        (whaleSignal && momentum1h > 0 ? 0.3 : 0)        // whale buying YES
+      );
+
+      // NO thesis: sharp money pushing price down + enough room
+      const noSharpScore = (
+        (momentum1h < -0.005 ? Math.abs(momentum1h) * 10 : 0) +
+        (momentum24h < -0.01 ? Math.abs(momentum24h) * 5 : 0) +
+        volumeSpike * 0.3 +
+        (whaleSignal && momentum1h < 0 ? 0.3 : 0)
+      );
+
+      // Contrarian value: price in mid-range with sharp indicators
+      const yesValue = mid >= 0.25 && mid <= 0.75 && yesNetEdge > 0.01;
+      const noValue  = mid >= 0.25 && mid <= 0.75 && noNetEdge > 0.01;
+
+      if (hasMinLiquidity && tradableSpread) {
+        if (yesSharpScore > 0.15 && yesNetEdge > 0.005 && yesValue) {
           direction = 'YES';
+          bestEdge = yesNetEdge;
           action = 'paper_buy_yes';
           sentimentBias = 'bullish';
-          thesis = `YES favored at ${(mid * 100).toFixed(0)}¢ with ${(profitRoom * 100).toFixed(0)}¢ profit room. Spread ${(spreadPct * 100).toFixed(1)}¢, net edge ${(expectedNetEdge * 100).toFixed(1)}¢.`;
-        } else if (mid <= 0.42 && mid > 0.15) {
+          const sharpLabel = whaleSignal && momentum1h > 0 ? '🐋 Whale accumulation detected. ' : '';
+          thesis = `${sharpLabel}Sharp flow: YES momentum +${(momentum1h * 100).toFixed(1)}¢/1h, vol spike ${(volumeSpike * 100).toFixed(0)}%. ` +
+            `Entry ${(quote.bestYesAsk * 100).toFixed(0)}¢ → ${(yesProfitRoom * 100).toFixed(0)}¢ room, net edge ${(yesNetEdge * 100).toFixed(1)}¢ after ${(totalCost * 100).toFixed(1)}¢ costs.`;
+        } else if (noSharpScore > 0.15 && noNetEdge > 0.005 && noValue) {
           direction = 'NO';
+          bestEdge = noNetEdge;
           action = 'paper_buy_no';
           sentimentBias = 'bearish';
-          thesis = `NO favored (YES only ${(mid * 100).toFixed(0)}¢). ${((1 - mid) * 100).toFixed(0)}¢ NO value with ${(expectedNetEdge * 100).toFixed(1)}¢ net edge.`;
-        } else if (mid >= 0.52 && mid < 0.58) {
-          direction = 'YES';
-          action = 'paper_buy_yes';
-          sentimentBias = 'bullish';
-          thesis = `Slight YES lean at ${(mid * 100).toFixed(0)}¢. ${(profitRoom * 100).toFixed(0)}¢ room. ${spreadPct < 0.03 ? 'Tight spread supports entry.' : 'Watch for spread tightening.'}`;
-        } else if (mid <= 0.48 && mid > 0.42) {
-          direction = 'NO';
-          action = 'paper_buy_no';
-          sentimentBias = 'bearish';
-          thesis = `Slight NO lean (YES at ${(mid * 100).toFixed(0)}¢). ${(expectedNetEdge * 100).toFixed(1)}¢ net edge. ${spreadPct < 0.03 ? 'Tight spread supports entry.' : 'Monitor for confirmation.'}`;
-        } else {
-          if (Math.abs(market.priceChange1h) > 0.01) {
-            direction = market.priceChange1h > 0 ? 'YES' : 'NO';
-            action = market.priceChange1h > 0 ? 'paper_buy_yes' : 'paper_buy_no';
-            sentimentBias = market.priceChange1h > 0 ? 'bullish' : 'bearish';
-            thesis = `Coin-flip with ${market.priceChange1h > 0 ? 'upward' : 'downward'} momentum (${(market.priceChange1h * 100).toFixed(1)}¢/1h). Best profit room of any setup type.`;
-          } else {
-            direction = 'PASS';
-            thesis = `True 50/50, no momentum. Best potential edge but needs a catalyst.`;
-          }
+          const sharpLabel = whaleSignal && momentum1h < 0 ? '🐋 Whale selling detected. ' : '';
+          thesis = `${sharpLabel}Sharp flow: NO momentum ${(momentum1h * 100).toFixed(1)}¢/1h, vol spike ${(volumeSpike * 100).toFixed(0)}%. ` +
+            `NO entry ${(quote.bestNoAsk * 100).toFixed(0)}¢ → ${(noProfitRoom * 100).toFixed(0)}¢ room, net edge ${(noNetEdge * 100).toFixed(1)}¢ after costs.`;
         }
-      } else if (!hasProfitRoom) {
-        direction = 'PASS';
-        thesis = `Price at ${(mid * 100).toFixed(0)}¢ — only ${(profitRoom * 100).toFixed(0)}¢ room before fees eat the edge. Skip.`;
+        // Fallback: strong value play even without sharp indicators
+        else if (yesNetEdge > 0.03 && mid >= 0.30 && mid <= 0.70 && spreadQuality >= 0.5) {
+          direction = 'YES';
+          bestEdge = yesNetEdge;
+          action = 'paper_buy_yes';
+          sentimentBias = 'bullish';
+          thesis = `Value entry: YES at ${(quote.bestYesAsk * 100).toFixed(0)}¢ in liquid market. ` +
+            `${(yesProfitRoom * 100).toFixed(0)}¢ room, tight spread (${(spreadPct * 100).toFixed(1)}¢), net edge ${(yesNetEdge * 100).toFixed(1)}¢.`;
+        } else if (noNetEdge > 0.03 && mid >= 0.30 && mid <= 0.70 && spreadQuality >= 0.5) {
+          direction = 'NO';
+          bestEdge = noNetEdge;
+          action = 'paper_buy_no';
+          sentimentBias = 'bearish';
+          thesis = `Value entry: NO at ${(quote.bestNoAsk * 100).toFixed(0)}¢. ` +
+            `${(noProfitRoom * 100).toFixed(0)}¢ room, tight spread (${(spreadPct * 100).toFixed(1)}¢), net edge ${(noNetEdge * 100).toFixed(1)}¢.`;
+        } else {
+          // Not enough edge — PASS
+          direction = 'PASS';
+          thesis = `No sharp edge. YES room ${(yesProfitRoom * 100).toFixed(0)}¢, NO room ${(noProfitRoom * 100).toFixed(0)}¢, costs ${(totalCost * 100).toFixed(1)}¢. Need momentum or tighter spread.`;
+        }
       } else if (!hasMinLiquidity) {
-        if (mid >= 0.55 && mid < 0.80) {
-          direction = 'YES'; action = 'paper_buy_yes'; sentimentBias = 'bullish';
-          thesis = `YES at ${(mid * 100).toFixed(0)}¢ with room, but low liquidity (${market.liquidityScore}). Small size only.`;
-        } else if (mid <= 0.45 && mid > 0.20) {
-          direction = 'NO'; action = 'paper_buy_no'; sentimentBias = 'bearish';
-          thesis = `NO value (YES at ${(mid * 100).toFixed(0)}¢), low liquidity (${market.liquidityScore}). Small size only.`;
-        } else {
-          thesis = `Low liquidity (${market.liquidityScore}). Slippage risk too high.`;
-        }
+        thesis = `Low liquidity (${market.liquidityScore}). Slippage will eat the edge.`;
       } else {
         thesis = `Spread too wide (${(spreadPct * 100).toFixed(1)}¢). Wait for tightening.`;
       }
 
-      // Entry/target/invalidation zones
-      const entryLow = direction === 'YES' ? quote.bestYesAsk : direction === 'NO' ? quote.bestNoAsk : mid;
-      const entryHigh = entryLow + 0.02;
-      const targetPrice = direction === 'YES'
-        ? Math.min(0.90, entryLow + Math.max(0.06, profitRoom * 0.7))
-        : direction === 'NO'
-          ? Math.min(0.90, (1 - mid) + Math.max(0.06, profitRoom * 0.7))
-          : mid;
-      const invalidationPrice = direction === 'YES'
-        ? Math.max(0.05, entryLow - 0.06)
-        : direction === 'NO'
-          ? Math.max(0.05, (1 - mid) - 0.06)
-          : mid;
+      // ── COMPOSITE SCORE ──
+      // Weight: edge (35%), sharp indicators (25%), spread quality (20%), liquidity (10%), time pressure (10%)
+      const edgeScore = Math.min(1, bestEdge * 8);
+      const sharpScore = Math.min(1, Math.max(yesSharpScore, noSharpScore));
+      const score = direction === 'PASS' ? 0 : Math.round(
+        (edgeScore * 0.35 + sharpScore * 0.25 + spreadQuality * 0.20 +
+         (market.liquidityScore / 100) * 0.10 + timePressure * 0.10) * 100
+      );
+
+      const confidence = direction === 'PASS' ? 0 : Math.min(95, Math.max(15, Math.round(
+        edgeScore * 30 + sharpScore * 25 + spreadQuality * 20 + (market.liquidityScore / 100) * 15 + timePressure * 10
+      )));
+
+      // ── ENTRY/TARGET/STOP ──
+      const entryPrice = direction === 'YES' ? quote.bestYesAsk : direction === 'NO' ? quote.bestNoAsk : mid;
+      const profitRoom = direction === 'YES' ? yesProfitRoom : noProfitRoom;
+      const entryLow = entryPrice;
+      const entryHigh = Math.min(0.95, entryLow + 0.02);
+      const targetPrice = direction !== 'PASS'
+        ? Math.min(0.92, entryLow + Math.max(0.06, profitRoom * 0.65))
+        : mid;
+      const invalidationPrice = direction !== 'PASS'
+        ? Math.max(0.03, entryLow - Math.max(0.04, profitRoom * 0.3))
+        : mid;
 
       const riskReward = targetPrice - entryLow > 0 && entryLow - invalidationPrice > 0
         ? +((targetPrice - entryLow) / (entryLow - invalidationPrice)).toFixed(2)
         : 0;
 
-      const hoursToExpiry = (new Date(market.eventEnd).getTime() - Date.now()) / 3_600_000;
       const catalystStrength = Math.min(100, Math.round(
-        (hoursToExpiry < 24 ? 40 : hoursToExpiry < 72 ? 20 : 10) +
-        Math.abs(market.priceChange1h) * 500 +
-        Math.abs(market.priceChange24h) * 200
+        timePressure * 40 + momStrength * 40 + volumeSpike * 20
       ));
 
-      const smartMoneyFlag = market.volume24h > 10000 && Math.abs(market.priceChange1h) > 0.03;
+      const setupType = direction === 'PASS' ? 'No Setup'
+        : whaleSignal ? 'Whale Play'
+        : sharpScore > 0.4 ? 'Sharp Flow'
+        : catalystStrength > 50 ? 'Catalyst Play'
+        : spreadQuality >= 0.75 ? 'Value Entry'
+        : 'Spread Capture';
 
       return {
         id: `sig-${market.id}`,
         marketId: market.id,
-        setupType: direction === 'PASS' ? 'No Setup' : catalystStrength > 50 ? 'Catalyst Play' : priceQuality > 0.6 ? 'Value Entry' : momentum > 0.5 ? 'Momentum Entry' : 'Spread Capture',
+        setupType,
         score,
-        expectedNetEdge,
+        expectedNetEdge: bestEdge,
         confidence,
         action,
         direction,
-        rationale: `Edge ${(expectedNetEdge * 100).toFixed(1)}¢ | Room ${(profitRoom * 100).toFixed(0)}¢ | Spread ${(spreadPct * 100).toFixed(1)}¢ | Liq ${market.liquidityScore}`,
+        rationale: `Edge ${(bestEdge * 100).toFixed(1)}¢ | Sharp ${(sharpScore * 100).toFixed(0)}% | Spread ${(spreadPct * 100).toFixed(1)}¢ | Vol ${market.volume24h}`,
         thesis,
-        momentum,
-        imbalance,
+        momentum: momStrength,
+        imbalance: clamp01(1 - spreadPct * 10),
         timeToExpiry: formatTimeToExpiry(market.eventEnd),
         entryZone: [+entryLow.toFixed(4), +entryHigh.toFixed(4)] as [number, number],
         targetPrice: +targetPrice.toFixed(4),
@@ -557,10 +602,10 @@ function buildSignals(markets: Market[], quotes: QuoteSnapshot[]): Signal[] {
         riskReward,
         catalystStrength,
         sentimentBias,
-        smartMoneyFlag,
+        smartMoneyFlag: whaleSignal,
       } satisfies Signal;
     })
-    .filter((row): row is Signal => Boolean(row))
+    .filter((row): row is Signal => Boolean(row) && row.direction !== 'PASS')
     .sort((a, b) => b.score - a.score)
     .slice(0, 50);
 }
