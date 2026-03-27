@@ -193,6 +193,20 @@ const AutoTradePage = () => {
     },
   });
 
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('sync-positions');
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['positions'] });
+      queryClient.invalidateQueries({ queryKey: ['order-history'] });
+      toast.success(`Synced ${data?.synced ?? 0} positions · Balance: $${data?.balance?.available?.toFixed(2) ?? '—'}`);
+    },
+    onError: (err) => toast.error(`Sync failed: ${String(err)}`),
+  });
+
   const openPositions = positions.filter(p => p.status === 'open');
   const closedPositions = positions.filter(p => p.status !== 'open');
   const totalPnl = positions.reduce((s, p) => s + (p.pnl ?? 0), 0);
