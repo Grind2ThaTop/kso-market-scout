@@ -20,7 +20,8 @@ export class KalshiProvider extends PredictionMarketProvider {
       throw new ProviderError(AppErrorCode.AUTH_FAILED, 'Kalshi credentials are missing API key ID or private key.');
     }
     const timestamp = `${Date.now()}`;
-    const payload = `${timestamp}${method.toUpperCase()}${path}${body}`;
+    const pathWithoutQuery = path.split('?')[0];
+    const payload = `${timestamp}${method.toUpperCase()}${pathWithoutQuery}${body}`;
     const signer = createSign('RSA-SHA256');
     signer.update(payload);
     const signature = signer.sign({
