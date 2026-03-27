@@ -37,6 +37,9 @@ function signKalshi(
   const timestamp = String(Date.now());
   const payload = `${timestamp}${method.toUpperCase()}${path}${body}`;
   const pem = normalizePem(privateKeyPem);
+  console.log("PEM first 80 chars:", pem.substring(0, 80));
+  console.log("PEM line count:", pem.split("\n").length);
+  console.log("PEM has BEGIN:", pem.includes("-----BEGIN"));
   const signer = createSign("RSA-SHA256");
   signer.update(payload);
   const signature = signer.sign(
