@@ -304,6 +304,114 @@ const Dashboard = () => {
         </div>
       </div>
 
+      {/* Profit Calculator */}
+      {sortedSignals.length > 0 && (() => {
+        const stakes = [1, 5, 10];
+        const takerFee = scannerConfig.profile.feeModel.taker;
+        const slippage = scannerConfig.profile.slippageModel;
+        const topPlays = sortedSignals.filter(s => s.direction !== 'PASS').slice(0, 10);
+
+        const calcProfit = (entryPrice: number, stake: number) => {
+          const contracts = Math.floor(stake / entryPrice);
+          if (contracts <= 0) return { contracts: 0, gross: 0, fees: 0, slip: 0, net: 0, roi: 0 };
+          const gross = (1 - entryPrice) * contracts;
+          const fees = takerFee * contracts * 2; // entry + exit
+          const slip = slippage * contracts * 2;
+          const net = gross - fees - slip;
+          const cost = entryPrice * contracts;
+          const roi = cost > 0 ? (net / cost) * 100 : 0;
+          return { contracts, gross, fees, slip, net, roi };
+        };
+
+        // Totals if you win ALL plays
+        const totals = stakes.map(stake => {
+          let totalNet = 0, totalFees = 0, totalSlip = 0, totalGross = 0, totalCost = 0;
+          topPlays.forEach(sig => {
+            const entry = sig.entryZone[0];
+            const r = calcProfit(entry, stake);
+            totalNet += r.net;
+            totalFees += r.fees;
+            totalSlip += r.slip;
+            totalGross += r.gross;
+            totalCost += entry * r.contracts;
+          });
+          return { stake, totalNet, totalFees, totalSlip, totalGross, totalCost, roi: totalCost > 0 ? (totalNet / totalCost) * 100 : 0 };
+        });
+
+        return (
+          <div className="glass-card border border-border rounded-lg">
+            <div className="px-4 py-3 border-b border-border">
+              <h2 className="text-sm font-semibold flex items-center gap-2">
+                <DollarSign className="w-4 h-4 text-profit" /> Profit Calculator
+                <span className="text-[10px] text-muted-foreground font-normal">
+                  If you catch & win ALL {topPlays.length} plays · Fee: {(takerFee * 100).toFixed(1)}¢/contract · Slippage: {(slippage * 100).toFixed(1)}¢/contract
+                </span>
+              </h2>
+            </div>
+
+            {/* Summary totals */}
+            <div className="grid grid-cols-3 gap-3 p-4 border-b border-border">
+              {totals.map(t => (
+                <div key={t.stake} className="bg-surface-2 rounded-lg p-3 text-center">
+                  <div className="text-[10px] text-muted-foreground mb-1">@ ${t.stake}/trade</div>
+                  <div className={`text-xl font-bold font-mono ${t.totalNet >= 0 ? 'text-profit' : 'text-loss'}`}>
+                    ${t.totalNet.toFixed(2)}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground mt-1">
+                    ROI: <span className={t.roi >= 0 ? 'text-profit' : 'text-loss'}>{t.roi.toFixed(1)}%</span>
+                    {' · '}Fees: <span className="text-loss">${t.totalFees.toFixed(2)}</span>
+                    {' · '}Slip: <span className="text-loss">${t.totalSlip.toFixed(2)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Per-trade breakdown */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border text-muted-foreground">
+                    <th className="px-3 py-2 text-left font-medium">Signal</th>
+                    <th className="px-3 py-2 text-left font-medium">Market</th>
+                    <th className="px-3 py-2 text-left font-medium">Entry</th>
+                    {stakes.map(s => (
+                      <th key={s} className="px-3 py-2 text-center font-medium" colSpan={1}>${s} Net</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {topPlays.map(sig => {
+                    const mkt = markets.find(m => m.id === sig.marketId);
+                    if (!mkt) return null;
+                    const entry = sig.entryZone[0];
+                    return (
+                      <tr key={sig.id} className="border-b border-border/50 hover:bg-surface-2">
+                        <td className="px-3 py-2">
+                          <span className={`font-bold ${directionColor(sig.direction)}`}>{sig.direction}</span>
+                        </td>
+                        <td className="px-3 py-2 truncate max-w-[180px]" title={mkt.title}>{mkt.title}</td>
+                        <td className="px-3 py-2 font-mono">{(entry * 100).toFixed(0)}¢</td>
+                        {stakes.map(s => {
+                          const r = calcProfit(entry, s);
+                          return (
+                            <td key={s} className="px-3 py-2 text-center font-mono">
+                              <span className={r.net >= 0 ? 'text-profit' : 'text-loss'}>
+                                {r.net >= 0 ? '+' : ''}${r.net.toFixed(2)}
+                              </span>
+                              <div className="text-[9px] text-muted-foreground">{r.contracts}ct · {r.roi.toFixed(0)}%</div>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Top thesis cards */}
       {sortedSignals.filter(s => s.direction !== 'PASS').length > 0 && (
         <div>
