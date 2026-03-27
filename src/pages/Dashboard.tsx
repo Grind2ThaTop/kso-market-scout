@@ -101,7 +101,21 @@ const Dashboard = () => {
     return active.reduce((sum, sig) => sum + sig.expectedNetEdge, 0) / Math.max(1, active.length);
   }, [actionableSignals]);
 
-  if (isLoading) {
+  if (!data && !isLoading && !isFetching) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <Zap className="w-8 h-8 text-primary mx-auto" />
+          <p className="text-sm text-muted-foreground">Click below to scan live markets on demand</p>
+          <button onClick={() => refetch()} className="px-4 py-2 bg-primary text-primary-foreground rounded-md font-semibold text-sm hover:opacity-90 transition">
+            Scan Now
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoading || isFetching) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center space-y-2">
