@@ -400,48 +400,98 @@ const AutoTradePage = () => {
         <span><strong>Educational & simulation purposes only.</strong> Auto-trading involves significant risk. Paper mode is enabled by default. You are solely responsible for any live trades.</span>
       </div>
 
-      <Card className="border-primary/20">
-        <CardContent className="p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Wallet className="w-4 h-4 text-primary" />
-              <span className="text-sm font-semibold">Kalshi Account</span>
+      {/* Total Portfolio */}
+      {(exchangeBalance.available !== null || polyBalance.available !== null) && (
+        <Card className="border-accent/30 bg-accent/5">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <DollarSign className="w-5 h-5 text-accent" />
+              <span className="text-sm font-bold">Total Portfolio</span>
             </div>
-            {exchangeBalance.lastSynced && (
-              <span className="text-[10px] text-muted-foreground">Last synced: {exchangeBalance.lastSynced}</span>
+            <p className="text-2xl font-bold font-mono text-foreground">${totalPortfolio.toFixed(2)}</p>
+            <p className="text-[10px] text-muted-foreground mt-1">Combined across all connected exchanges</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Exchange Accounts */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {/* Kalshi */}
+        <Card className="border-primary/20">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Wallet className="w-4 h-4 text-primary" />
+                <span className="text-sm font-semibold">Kalshi</span>
+              </div>
+              {exchangeBalance.lastSynced && (
+                <span className="text-[10px] text-muted-foreground">Synced: {exchangeBalance.lastSynced}</span>
+              )}
+            </div>
+            {exchangeBalance.available !== null ? (
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Available</p>
+                  <p className="text-lg font-bold text-foreground">${exchangeBalance.available.toFixed(2)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Total</p>
+                  <p className="text-lg font-bold text-foreground">${exchangeBalance.total?.toFixed(2) ?? '—'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Positions</p>
+                  <p className="text-sm font-semibold">{exchangeBalance.livePositions}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Orders</p>
+                  <p className="text-sm font-semibold">{exchangeBalance.liveOrders}</p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Tap <strong>Sync</strong> to pull live data.</p>
             )}
-          </div>
+            {exchangeBalance.error && (
+              <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">{exchangeBalance.error}</div>
+            )}
+          </CardContent>
+        </Card>
 
-          {exchangeBalance.available !== null ? (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Available</p>
-                <p className="text-lg font-bold text-foreground">${exchangeBalance.available.toFixed(2)}</p>
+        {/* Polymarket */}
+        <Card className="border-primary/20">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Wallet className="w-4 h-4 text-primary" />
+                <span className="text-sm font-semibold">Polymarket</span>
               </div>
-              <div>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Total</p>
-                <p className="text-lg font-bold text-foreground">${exchangeBalance.total?.toFixed(2) ?? '—'}</p>
-              </div>
-              <div>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Live Positions</p>
-                <p className="text-sm font-semibold">{exchangeBalance.livePositions}</p>
-              </div>
-              <div>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Open Orders</p>
-                <p className="text-sm font-semibold">{exchangeBalance.liveOrders}</p>
-              </div>
+              {polyBalance.lastSynced && (
+                <span className="text-[10px] text-muted-foreground">Synced: {polyBalance.lastSynced}</span>
+              )}
             </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">Tap <strong>Sync</strong> to pull your live exchange balance and positions.</p>
-          )}
-
-          {exchangeBalance.error && (
-            <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
-              {exchangeBalance.error}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            {polyBalance.available !== null ? (
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Balance</p>
+                  <p className="text-lg font-bold text-foreground">${polyBalance.available.toFixed(2)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Positions</p>
+                  <p className="text-sm font-semibold">{polyBalance.livePositions}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Open Orders</p>
+                  <p className="text-sm font-semibold">{polyBalance.liveOrders}</p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Tap <strong>Sync</strong> to pull live Polymarket data.</p>
+            )}
+            {polyBalance.error && (
+              <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">{polyBalance.error}</div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <Card className="border-loss/30">
         <CardContent className="p-4 flex items-center justify-between">
