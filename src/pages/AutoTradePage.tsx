@@ -233,6 +233,18 @@ const AutoTradePage = () => {
           <Zap className="w-5 h-5 text-primary" /> Auto-Trade Engine
         </h1>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => syncMutation.mutate()}
+            disabled={syncMutation.isPending}
+          >
+            <RefreshCw className={`w-3.5 h-3.5 mr-1 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
+            Sync
+          </Button>
+          {!localSettings.paper_mode && (
+            <Badge variant="outline" className="text-profit border-profit/40">LIVE</Badge>
+          )}
           {localSettings.paper_mode && (
             <Badge variant="outline" className="text-warning border-warning/40">PAPER MODE</Badge>
           )}
