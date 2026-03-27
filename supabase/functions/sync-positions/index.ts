@@ -106,6 +106,15 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Diagnostic logging (safe — only lengths & prefixes)
+    console.log("Kalshi creds check:", {
+      keyIdLen: KALSHI_API_KEY_ID.length,
+      keyIdPrefix: KALSHI_API_KEY_ID.substring(0, 8),
+      pemLen: KALSHI_PRIVATE_KEY.length,
+      pemHasBegin: KALSHI_PRIVATE_KEY.includes("BEGIN"),
+      pemLineCount: KALSHI_PRIVATE_KEY.split("\n").length,
+    });
+
     // Fetch live data from Kalshi
     const [balanceRes, positionsRes, ordersRes] = await Promise.allSettled([
       kalshiGet(KALSHI_API_KEY_ID, KALSHI_PRIVATE_KEY, "/portfolio/balance"),
