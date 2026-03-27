@@ -193,6 +193,10 @@ const AutoTradePage = () => {
     },
   });
 
+  const [exchangeBalance, setExchangeBalance] = useState<{ available: number | null; total: number | null; livePositions: number; liveOrders: number; lastSynced: string | null }>({
+    available: null, total: null, livePositions: 0, liveOrders: 0, lastSynced: null,
+  });
+
   const syncMutation = useMutation({
     mutationFn: async () => {
       const { data, error } = await supabase.functions.invoke('sync-positions');
@@ -202,7 +206,14 @@ const AutoTradePage = () => {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['positions'] });
       queryClient.invalidateQueries({ queryKey: ['order-history'] });
-      toast.success(`Synced ${data?.synced ?? 0} positions · Balance: $${data?.balance?.available?.toFixed(2) ?? '—'}`);
+      setExchangeBalance({
+        available: data?.balance?.available ?? null,
+        total: data?.balance?.total ?? null,
+        livePositions: data?.livePositions ?? 0,
+        liveOrders: data?.liveOrders ?? 0,
+        lastSynced: new Date().toLocaleTimeString(),
+      });
+      toast.success(`Synced ${data?.synced ?? 0} positions`);
     },
     onError: (err) => toast.error(`Sync failed: ${String(err)}`),
   });
@@ -260,7 +271,43 @@ const AutoTradePage = () => {
         <span><strong>Educational & simulation purposes only.</strong> Auto-trading involves significant risk. Paper mode is enabled by default. You are solely responsible for any live trades.</span>
       </div>
 
-      {/* Kill Switch */}
+      {/* Exchange Balance Card */}
+      <Card className="border-primary/20">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Wallet className="w-4 h-4 text-primary" />
+              <span className="text-sm font-semibold">Kalshi Account</span>
+            </div>
+            {exchangeBalance.lastSynced && (
+              <span className="text-[10px] text-muted-foreground">Last synced: {exchangeBalance.lastSynced}</span>
+            )}
+          </div>
+          {exchangeBalance.available !== null ? (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Available</p>
+                <p className="text-lg font-bold text-foreground">${exchangeBalance.available.toFixed(2)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Total</p>
+                <p className="text-lg font-bold text-foreground">${exchangeBalance.total?.toFixed(2) ?? '—'}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Live Positions</p>
+                <p className="text-sm font-semibold">{exchangeBalance.livePositions}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Open Orders</p>
+                <p className="text-sm font-semibold">{exchangeBalance.liveOrders}</p>
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">Tap <strong>Sync</strong> to pull your live exchange balance and positions.</p>
+          )}
+        </CardContent>
+      </Card>
+
       <Card className="border-loss/30">
         <CardContent className="p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
