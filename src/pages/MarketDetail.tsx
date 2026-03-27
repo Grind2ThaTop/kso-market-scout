@@ -1,10 +1,11 @@
 import { useParams, Link } from 'react-router-dom';
 import { useState } from 'react';
-import { ArrowLeft, AlertTriangle, ExternalLink, TrendingUp, TrendingDown, MinusCircle } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, ExternalLink, TrendingUp, TrendingDown, MinusCircle, Search, Loader2 } from 'lucide-react';
 import { useMarketScanner } from '@/hooks/useMarketScanner';
 import { useIntegratedFeeModel } from '@/integrations/useIntegratedFeeModel';
 import { buildOutcomeTradeUrl } from '@/lib/marketUrlBuilder';
 import { getFreshnessStatus, freshnessColors } from '@/data/types';
+import { firecrawlApi } from '@/lib/api/firecrawl';
 
 const MarketDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -13,6 +14,11 @@ const MarketDetail = () => {
   const { data: feeModel } = useIntegratedFeeModel();
   const [size, setSize] = useState(25);
   const [showPlaced, setShowPlaced] = useState(false);
+
+  // Deep dive state
+  const [deepDiveData, setDeepDiveData] = useState<string | null>(null);
+  const [deepDiveLoading, setDeepDiveLoading] = useState(false);
+  const [deepDiveError, setDeepDiveError] = useState<string | null>(null);
 
   if (isLoading) return <div className="flex-1 flex items-center justify-center text-muted-foreground">Loading market…</div>;
   if (isError) return <div className="flex-1 flex items-center justify-center text-loss">{error instanceof Error ? error.message : 'Live data unavailable'}</div>;
@@ -36,6 +42,40 @@ const MarketDetail = () => {
   const netEdgePerContract = targetExit - entryPrice - takerFee - slip;
   const projectedPnlTarget = (targetExit - entryPrice) * size - fees - slippage;
   const projectedPnlStop = (stopPrice - entryPrice) * size - fees - slippage;
+
+  // Profit scale for $1, $5, $10
+  const stakes = [1, 5, 10];
+  const calcProfit = (stake: number) => {
+    const contracts = Math.floor(stake / entryPrice);
+    if (contracts <= 0) return { contracts: 0, gross: 0, totalFees: 0, net: 0 };
+    const gross = (targetExit - entryPrice) * contracts;
+    const totalFees = (takerFee + slip) * contracts * 2;
+    const net = gross - totalFees;
+    return { contracts, gross, totalFees, net };
+  };
+
+  const handleDeepDive = async () => {
+    if (!market.market_url) return;
+    setDeepDiveLoading(true);
+    setDeepDiveError(null);
+    setDeepDiveData(null);
+    try {
+      const result = await firecrawlApi.scrape(market.market_url, {
+        formats: ['markdown'],
+        onlyMainContent: true,
+      });
+      if (result.success) {
+        const md = result.data?.markdown || result.data?.data?.markdown || 'No content returned.';
+        setDeepDiveData(md);
+      } else {
+        setDeepDiveError(result.error || 'Scrape failed');
+      }
+    } catch (e: any) {
+      setDeepDiveError(e.message || 'Scrape request failed');
+    } finally {
+      setDeepDiveLoading(false);
+    }
+  };
 
   const DirectionBadge = () => {
     if (!signal) return null;
@@ -93,7 +133,7 @@ const MarketDetail = () => {
 
         {/* Signal panel */}
         <div className="bg-card border border-border rounded-lg p-4">
-          <h2 className="text-sm font-semibold text-foreground mb-3">Signal Analysis</h2>
+          <h2 className="text-sm font-semibold text-foreground mb-3">Sharp Edge Analysis</h2>
           {signal ? (
             <div className="space-y-3 text-xs">
               <div className="flex items-center justify-between">
@@ -123,7 +163,28 @@ const MarketDetail = () => {
                 <span className="inline-block px-1.5 py-0.5 bg-primary/20 text-primary rounded text-[9px] font-bold">🐋 Smart Money Detected</span>
               )}
             </div>
-          ) : <p className="text-xs text-muted-foreground">No signal generated for this market.</p>}
+          ) : <p className="text-xs text-muted-foreground">No edge signal — this market didn't pass the sharp filter.</p>}
+        </div>
+      </div>
+
+      {/* Profit Scale */}
+      <div className="bg-card border border-border rounded-lg p-4">
+        <h2 className="text-sm font-semibold text-foreground mb-3">Profit Scale (if target hit)</h2>
+        <div className="grid grid-cols-3 gap-3">
+          {stakes.map(stake => {
+            const r = calcProfit(stake);
+            return (
+              <div key={stake} className="bg-surface-2 rounded-lg p-3 text-center">
+                <div className="text-[10px] text-muted-foreground mb-1">@ ${stake} stake</div>
+                <div className={`text-lg font-bold font-mono ${r.net >= 0 ? 'text-profit' : 'text-loss'}`}>
+                  {r.net >= 0 ? '+' : ''}${r.net.toFixed(2)}
+                </div>
+                <div className="text-[9px] text-muted-foreground mt-1">
+                  {r.contracts} contracts · Fees: ${r.totalFees.toFixed(2)}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -152,6 +213,37 @@ const MarketDetail = () => {
           {showPlaced && <div className="bg-primary/10 border border-primary/30 rounded p-2 text-[11px] text-primary">Paper plan saved locally.</div>}
           <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><AlertTriangle className="w-3 h-3" />Fee source: {feeModel?.source ?? 'default config'}</div>
         </div>
+      </div>
+
+      {/* Firecrawl Deep Dive */}
+      <div className="bg-card border border-border rounded-lg p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
+            <Search className="w-4 h-4 text-primary" /> Deep Dive — Live Market Intel
+          </h2>
+          <button
+            onClick={handleDeepDive}
+            disabled={deepDiveLoading}
+            className="px-3 py-1.5 bg-primary text-primary-foreground rounded text-[11px] font-semibold flex items-center gap-1.5 disabled:opacity-50"
+          >
+            {deepDiveLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
+            {deepDiveLoading ? 'Scraping...' : 'Scrape Market Page'}
+          </button>
+        </div>
+        <p className="text-[11px] text-muted-foreground mb-3">
+          Pulls real-time data from the exchange page — rules, comments, resolution criteria, volume history. Use this to validate your thesis before entering.
+        </p>
+        {deepDiveError && (
+          <div className="bg-loss/10 border border-loss/30 rounded p-2 text-[11px] text-loss mb-3">{deepDiveError}</div>
+        )}
+        {deepDiveData && (
+          <div className="bg-surface-2 rounded p-3 max-h-[400px] overflow-y-auto text-[11px] text-foreground whitespace-pre-wrap leading-relaxed font-mono">
+            {deepDiveData}
+          </div>
+        )}
+        {!deepDiveData && !deepDiveError && !deepDiveLoading && (
+          <div className="text-[11px] text-muted-foreground italic">Click "Scrape Market Page" to pull live intel from {market.platform}.</div>
+        )}
       </div>
     </div>
   );
