@@ -14,7 +14,218 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      auto_trade_settings: {
+        Row: {
+          allowed_providers: string[]
+          cooldown_seconds: number
+          created_at: string
+          enabled: boolean
+          id: string
+          kill_switch: boolean
+          max_daily_loss: number
+          max_open_positions: number
+          max_position_size: number
+          min_confidence: number
+          min_signal_score: number
+          paper_mode: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          allowed_providers?: string[]
+          cooldown_seconds?: number
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          kill_switch?: boolean
+          max_daily_loss?: number
+          max_open_positions?: number
+          max_position_size?: number
+          min_confidence?: number
+          min_signal_score?: number
+          paper_mode?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          allowed_providers?: string[]
+          cooldown_seconds?: number
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          kill_switch?: boolean
+          max_daily_loss?: number
+          max_open_positions?: number
+          max_position_size?: number
+          min_confidence?: number
+          min_signal_score?: number
+          paper_mode?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      daily_pnl: {
+        Row: {
+          id: string
+          kill_switch_triggered: boolean
+          realized_pnl: number
+          trade_count: number
+          trade_date: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          kill_switch_triggered?: boolean
+          realized_pnl?: number
+          trade_count?: number
+          trade_date?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          kill_switch_triggered?: boolean
+          realized_pnl?: number
+          trade_count?: number
+          trade_date?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      order_history: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          executed_at: string | null
+          id: string
+          market_id: string
+          order_type: string
+          paper_mode: boolean
+          position_id: string | null
+          price: number
+          provider: string
+          provider_order_id: string | null
+          side: Database["public"]["Enums"]["trade_side"]
+          size: number
+          status: Database["public"]["Enums"]["trade_status"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          executed_at?: string | null
+          id?: string
+          market_id: string
+          order_type?: string
+          paper_mode?: boolean
+          position_id?: string | null
+          price: number
+          provider: string
+          provider_order_id?: string | null
+          side: Database["public"]["Enums"]["trade_side"]
+          size: number
+          status?: Database["public"]["Enums"]["trade_status"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          executed_at?: string | null
+          id?: string
+          market_id?: string
+          order_type?: string
+          paper_mode?: boolean
+          position_id?: string | null
+          price?: number
+          provider?: string
+          provider_order_id?: string | null
+          side?: Database["public"]["Enums"]["trade_side"]
+          size?: number
+          status?: Database["public"]["Enums"]["trade_status"]
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_history_position_id_fkey"
+            columns: ["position_id"]
+            isOneToOne: false
+            referencedRelation: "positions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      positions: {
+        Row: {
+          closed_at: string | null
+          confidence: number | null
+          current_price: number | null
+          entry_price: number
+          id: string
+          market_id: string
+          market_title: string
+          opened_at: string
+          paper_mode: boolean
+          pnl: number | null
+          provider: string
+          setup_type: string | null
+          side: Database["public"]["Enums"]["trade_side"]
+          signal_score: number | null
+          size: number
+          status: string
+          stop_price: number | null
+          target_price: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          closed_at?: string | null
+          confidence?: number | null
+          current_price?: number | null
+          entry_price: number
+          id?: string
+          market_id: string
+          market_title: string
+          opened_at?: string
+          paper_mode?: boolean
+          pnl?: number | null
+          provider: string
+          setup_type?: string | null
+          side: Database["public"]["Enums"]["trade_side"]
+          signal_score?: number | null
+          size: number
+          status?: string
+          stop_price?: number | null
+          target_price?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          closed_at?: string | null
+          confidence?: number | null
+          current_price?: number | null
+          entry_price?: number
+          id?: string
+          market_id?: string
+          market_title?: string
+          opened_at?: string
+          paper_mode?: boolean
+          pnl?: number | null
+          provider?: string
+          setup_type?: string | null
+          side?: Database["public"]["Enums"]["trade_side"]
+          signal_score?: number | null
+          size?: number
+          status?: string
+          stop_price?: number | null
+          target_price?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +234,14 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      trade_side: "yes" | "no"
+      trade_status:
+        | "pending"
+        | "filled"
+        | "partial"
+        | "cancelled"
+        | "failed"
+        | "stopped"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +368,16 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      trade_side: ["yes", "no"],
+      trade_status: [
+        "pending",
+        "filled",
+        "partial",
+        "cancelled",
+        "failed",
+        "stopped",
+      ],
+    },
   },
 } as const
