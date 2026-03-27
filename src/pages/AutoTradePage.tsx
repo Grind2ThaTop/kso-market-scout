@@ -66,6 +66,14 @@ interface ExchangeBalanceState {
   error: string | null;
 }
 
+interface PolymarketBalanceState {
+  available: number | null;
+  livePositions: number;
+  liveOrders: number;
+  lastSynced: string | null;
+  error: string | null;
+}
+
 const defaultSettings: Omit<AutoTradeSettings, 'id' | 'user_id'> = {
   enabled: false,
   kill_switch: false,
@@ -80,10 +88,19 @@ const defaultSettings: Omit<AutoTradeSettings, 'id' | 'user_id'> = {
 };
 
 const EXCHANGE_BALANCE_STORAGE_KEY = 'kso_exchange_balance';
+const POLY_BALANCE_STORAGE_KEY = 'kso_poly_balance';
 
 const defaultExchangeBalance: ExchangeBalanceState = {
   available: null,
   total: null,
+  livePositions: 0,
+  liveOrders: 0,
+  lastSynced: null,
+  error: null,
+};
+
+const defaultPolyBalance: PolymarketBalanceState = {
+  available: null,
   livePositions: 0,
   liveOrders: 0,
   lastSynced: null,
