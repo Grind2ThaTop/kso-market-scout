@@ -1,5 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
-import { encode as base64Encode } from "https://deno.land/std@0.224.0/encoding/base64.ts";
+
+function uint8ToBase64(arr: Uint8Array): string {
+  let binary = "";
+  for (const byte of arr) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
