@@ -51,6 +51,7 @@ const Dashboard = () => {
 
   const actionableSignals = useMemo(() => {
     let filtered = signals.filter((signal) => {
+      if (signal.direction === 'PASS') return false;
       const market = markets.find(m => m.id === signal.marketId);
       return market?.market_url;
     });
@@ -197,10 +198,10 @@ const Dashboard = () => {
           <Filter className="w-3.5 h-3.5" />
           <span>Direction:</span>
         </div>
-        {(['ALL', 'YES', 'NO', 'PASS'] as FilterDirection[]).map(d => (
+        {(['ALL', 'YES', 'NO'] as FilterDirection[]).map(d => (
           <button key={d} onClick={() => setFilterDirection(d)}
             className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-colors ${filterDirection === d
-              ? d === 'YES' ? 'bg-profit/20 text-profit' : d === 'NO' ? 'bg-loss/20 text-loss' : d === 'PASS' ? 'bg-muted text-muted-foreground' : 'bg-primary/20 text-primary'
+              ? d === 'YES' ? 'bg-profit/20 text-profit' : d === 'NO' ? 'bg-loss/20 text-loss' : 'bg-primary/20 text-primary'
               : 'bg-surface-2 text-muted-foreground hover:text-foreground'
             }`}>{d}</button>
         ))}
