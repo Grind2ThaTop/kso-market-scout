@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { TrendingUp, Target, AlertTriangle, DollarSign, Activity, WifiOff } from 'lucide-react';
 import { useMarketScanner } from '@/hooks/useMarketScanner';
@@ -6,9 +7,22 @@ import { buildOutcomeTradeUrl } from '@/lib/marketUrlBuilder';
 
 const fmt = (n: number) => `$${n.toFixed(0)}`;
 const fmtC = (n: number) => `${(n * 100).toFixed(2)}¢`;
+type SortKey = 'market' | 'platform' | 'bidAsk' | 'spread' | 'score' | 'netEdge' | 'confidence' | 'time';
+
+const timeToHours = (value: string) => {
+  if (!value) return Number.POSITIVE_INFINITY;
+  if (value.toLowerCase() === 'expired') return Number.NEGATIVE_INFINITY;
+  if (value.toLowerCase() === 'unknown') return Number.POSITIVE_INFINITY;
+  const match = value.match(/^(\d+)([hd])$/i);
+  if (!match) return Number.POSITIVE_INFINITY;
+  const amount = Number(match[1]);
+  return match[2].toLowerCase() === 'd' ? amount * 24 : amount;
+};
 
 const Dashboard = () => {
   const { data, isLoading, isError, error } = useMarketScanner();
+  const [sortKey, setSortKey] = useState<SortKey>('score');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   if (isLoading) {
     return <div className="flex-1 flex items-center justify-center text-muted-foreground">Loading live market feed…</div>;
@@ -44,6 +58,57 @@ const Dashboard = () => {
   const avgEdge = actionableSignals.filter((s) => s.action !== 'wait').reduce((sum, sig) => sum + sig.expectedNetEdge, 0) / Math.max(1, actionableSignals.filter((s) => s.action !== 'wait').length);
   const remaining = scannerConfig.profile.dailyTarget;
   const tradesNeeded = Math.ceil(remaining / Math.max(0.0001, avgEdge * 30));
+  const sortedSignals = useMemo(() => {
+    const copy = [...actionableSignals];
+    copy.sort((a, b) => {
+      const marketA = markets.find((market) => market.id === a.marketId);
+      const marketB = markets.find((market) => market.id === b.marketId);
+      const quoteA = quotes.find((quote) => quote.marketId === a.marketId);
+      const quoteB = quotes.find((quote) => quote.marketId === b.marketId);
+
+      let result = 0;
+      switch (sortKey) {
+        case 'market':
+          result = (marketA?.ticker ?? '').localeCompare(marketB?.ticker ?? '');
+          break;
+        case 'platform':
+          result = (marketA?.platform ?? '').localeCompare(marketB?.platform ?? '');
+          break;
+        case 'bidAsk':
+          result = (quoteA?.bestYesBid ?? 0) - (quoteB?.bestYesBid ?? 0);
+          break;
+        case 'spread':
+          result = (quoteA?.spread ?? 0) - (quoteB?.spread ?? 0);
+          break;
+        case 'score':
+          result = a.score - b.score;
+          break;
+        case 'netEdge':
+          result = a.expectedNetEdge - b.expectedNetEdge;
+          break;
+        case 'confidence':
+          result = a.confidence - b.confidence;
+          break;
+        case 'time':
+          result = timeToHours(a.timeToExpiry) - timeToHours(b.timeToExpiry);
+          break;
+        default:
+          result = 0;
+      }
+
+      return sortDirection === 'asc' ? result : -result;
+    });
+    return copy;
+  }, [actionableSignals, markets, quotes, sortDirection, sortKey]);
+
+  const setSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSortKey(key);
+    setSortDirection(key === 'market' || key === 'platform' || key === 'time' ? 'asc' : 'desc');
+  };
 
   return (
     <div className="flex-1 overflow-auto p-4 space-y-4">
@@ -88,19 +153,42 @@ const Dashboard = () => {
       <div className="glass-card border border-border rounded-lg">
         <div className="px-4 py-3 border-b border-border flex items-center justify-between">
           <h2 className="text-sm font-semibold text-foreground">Top Signals</h2>
-          <span className="text-[10px] text-muted-foreground">Ranked by score</span>
+          <span className="text-[10px] text-muted-foreground">Click headers to sort</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-border text-muted-foreground">
-                {['Market', 'Platform', 'Setup', 'Bid/Ask', 'Spread', 'Score', 'Net Edge', 'Conf', 'Time', 'Trade'].map(h => (
-                  <th key={h} className="px-3 py-2 text-left font-medium">{h}</th>
-                ))}
+                <th className="px-3 py-2 text-left font-medium">
+                  <button type="button" onClick={() => setSort('market')} className="hover:text-foreground">Market</button>
+                </th>
+                <th className="px-3 py-2 text-left font-medium">
+                  <button type="button" onClick={() => setSort('platform')} className="hover:text-foreground">Platform</button>
+                </th>
+                <th className="px-3 py-2 text-left font-medium">Setup</th>
+                <th className="px-3 py-2 text-left font-medium">
+                  <button type="button" onClick={() => setSort('bidAsk')} className="hover:text-foreground">Bid/Ask</button>
+                </th>
+                <th className="px-3 py-2 text-left font-medium">
+                  <button type="button" onClick={() => setSort('spread')} className="hover:text-foreground">Spread</button>
+                </th>
+                <th className="px-3 py-2 text-left font-medium">
+                  <button type="button" onClick={() => setSort('score')} className="hover:text-foreground">Score</button>
+                </th>
+                <th className="px-3 py-2 text-left font-medium">
+                  <button type="button" onClick={() => setSort('netEdge')} className="hover:text-foreground">Net Edge</button>
+                </th>
+                <th className="px-3 py-2 text-left font-medium">
+                  <button type="button" onClick={() => setSort('confidence')} className="hover:text-foreground">Conf</button>
+                </th>
+                <th className="px-3 py-2 text-left font-medium">
+                  <button type="button" onClick={() => setSort('time')} className="hover:text-foreground">Time</button>
+                </th>
+                <th className="px-3 py-2 text-left font-medium">Trade</th>
               </tr>
             </thead>
             <tbody>
-              {actionableSignals.map(sig => {
+              {sortedSignals.map(sig => {
                 const mkt = markets.find(m => m.id === sig.marketId);
                 const qt = quotes.find(q => q.marketId === sig.marketId);
                 if (!mkt || !qt) return null;

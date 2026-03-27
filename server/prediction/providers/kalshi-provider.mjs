@@ -51,7 +51,7 @@ export class KalshiProvider extends PredictionMarketProvider {
   }
 
   async listMarkets() {
-    const rows = await this.request('/markets?limit=100');
+    const rows = await this.request('/markets?limit=100&status=open');
     const markets = Array.isArray(rows?.markets) ? rows.markets : Array.isArray(rows) ? rows : [];
     return markets.map((row) => toNormalizedMarket(row, 'kalshi'));
   }

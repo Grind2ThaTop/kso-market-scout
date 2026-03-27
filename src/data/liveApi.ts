@@ -107,6 +107,22 @@ const fetchIntegrationProviderMarkets = async (provider: 'kalshi' | 'polymarket'
   return response.json();
 };
 
+const fetchIntegrationMarketsBestEffort = async () => {
+  const results = await Promise.allSettled([
+    fetchIntegrationProviderMarkets('kalshi'),
+    fetchIntegrationProviderMarkets('polymarket'),
+  ]);
+
+  const mergedRows: unknown[] = [];
+  for (const result of results) {
+    if (result.status === 'fulfilled') {
+      mergedRows.push(...parseArray(result.value));
+    }
+  }
+
+  return mergedRows;
+};
+
 const toRecord = (value: unknown): Record<string, unknown> => (
   value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
 );
@@ -169,8 +185,15 @@ const normalizeRows = (rows: unknown[], fetchedAt: string) => {
       const eventEnd = pickFirstString(
         row.eventEnd, row.endDate, row.end_date, row.closeTime, row.expiration,
         sourceRow.eventEnd, sourceRow.endDate, sourceRow.end_date, sourceRow.closeTime, sourceRow.expiration,
-        fetchedAt,
       );
+      const status = pickFirstString(row.status, sourceRow.status).toLowerCase();
+      const activeFlag = row.active ?? sourceRow.active;
+      const isInactive = activeFlag === false || String(activeFlag).toLowerCase() === 'false';
+      const isClosedStatus = /(closed|resolved|settled|final|expired|inactive)/.test(status);
+      const eventEndMs = eventEnd ? new Date(eventEnd).getTime() : Number.NaN;
+      const isExpired = Number.isFinite(eventEndMs) && eventEndMs <= Date.now();
+      if (isInactive || isClosedStatus || isExpired) return null;
+
       const volume = pickFirstNumber(
         row.volume24h, row.volume, row.liquidity,
         sourceRow.volume24h, sourceRow.volume, sourceRow.liquidity, sourceRow.volume_num,
@@ -193,7 +216,7 @@ const normalizeRows = (rows: unknown[], fetchedAt: string) => {
         marketSlug,
         eventSlug,
         category: normalizeCategory(row.category ?? row.group ?? row.tag ?? sourceRow.category ?? sourceRow.group ?? sourceRow.tag),
-        eventEnd,
+        eventEnd: eventEnd || fetchedAt,
         settlementRules: pickFirstString(row.rules, row.description, sourceRow.rules, sourceRow.description, 'See exchange rules.'),
         liquidityScore,
         market_url: resolveMarketUrl(row, sourceRow, platform, marketSlug, eventSlug),
@@ -238,11 +261,7 @@ export async function fetchScanSnapshot(): Promise<ScanSnapshot> {
       return { fetchedAt, source: 'live-api', markets, quotes, signals };
     }
 
-    const [kalshiPayload, polymarketPayload] = await Promise.all([
-      fetchIntegrationProviderMarkets('kalshi'),
-      fetchIntegrationProviderMarkets('polymarket'),
-    ]);
-    const mergedRows = [...parseArray(kalshiPayload), ...parseArray(polymarketPayload)];
+    const mergedRows = await fetchIntegrationMarketsBestEffort();
     if (mergedRows.length === 0) throw new MissingDataSourceError();
 
     const { markets, quotes } = normalizeRows(mergedRows, fetchedAt);

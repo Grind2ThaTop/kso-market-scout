@@ -53,7 +53,7 @@ export class PolymarketProvider extends PredictionMarketProvider {
   }
 
   async listMarkets() {
-    const rows = await this.gamma('/markets?limit=100');
+    const rows = await this.gamma('/markets?limit=100&active=true&closed=false&archived=false');
     const markets = Array.isArray(rows) ? rows : rows?.data ?? [];
     return markets.map((row) => toNormalizedMarket(row, 'polymarket'));
   }
