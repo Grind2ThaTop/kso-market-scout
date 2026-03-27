@@ -277,17 +277,10 @@ const AutoTradePage = () => {
 
   const syncMutation = useMutation({
     mutationFn: async () => {
-      // Sync both Kalshi and Polymarket in parallel
-      const [kalshiRes, polyRes] = await Promise.allSettled([
-        supabase.functions.invoke('sync-positions'),
-        supabase.functions.invoke('polymarket-proxy', {
-          body: null,
-          headers: { 'Content-Type': 'application/json' },
-          method: 'GET',
-        }),
-      ]);
+      // Sync Kalshi positions
+      const kalshiRes = await supabase.functions.invoke('sync-positions').catch((e: any) => ({ data: null, error: e }));
 
-      // For polymarket, we need to call with action=live-balance
+      // Sync Polymarket live balance
       let polyData: any = null;
       try {
         const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
@@ -306,8 +299,8 @@ const AutoTradePage = () => {
         }
       } catch {}
 
-      const kalshiData = kalshiRes.status === 'fulfilled' ? kalshiRes.value.data : null;
-      const kalshiError = kalshiRes.status === 'rejected' ? String(kalshiRes.reason) : kalshiData?.error ?? null;
+      const kalshiData = kalshiRes?.data ?? null;
+      const kalshiError = kalshiRes?.error ? String(kalshiRes.error) : kalshiData?.error ?? null;
 
       return { kalshi: kalshiData, kalshiError, poly: polyData };
     },
