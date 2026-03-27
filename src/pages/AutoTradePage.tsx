@@ -6,7 +6,7 @@ import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Zap, ShieldAlert, TrendingUp, TrendingDown, Activity, Power, AlertTriangle, Clock, DollarSign, Target, RefreshCw, Wallet } from 'lucide-react';
+import { Zap, ShieldAlert, TrendingUp, Activity, Power, AlertTriangle, Clock, DollarSign, Target, RefreshCw, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface AutoTradeSettings {
@@ -57,6 +57,15 @@ interface OrderHistoryRow {
   created_at: string;
 }
 
+interface ExchangeBalanceState {
+  available: number | null;
+  total: number | null;
+  livePositions: number;
+  liveOrders: number;
+  lastSynced: string | null;
+  error: string | null;
+}
+
 const defaultSettings: Omit<AutoTradeSettings, 'id' | 'user_id'> = {
   enabled: false,
   kill_switch: false,
@@ -70,9 +79,49 @@ const defaultSettings: Omit<AutoTradeSettings, 'id' | 'user_id'> = {
   paper_mode: true,
 };
 
+const EXCHANGE_BALANCE_STORAGE_KEY = 'kso_exchange_balance';
+
+const defaultExchangeBalance: ExchangeBalanceState = {
+  available: null,
+  total: null,
+  livePositions: 0,
+  liveOrders: 0,
+  lastSynced: null,
+  error: null,
+};
+
 const AutoTradePage = () => {
   const queryClient = useQueryClient();
   const [localSettings, setLocalSettings] = useState<typeof defaultSettings>(defaultSettings);
+  const [exchangeBalance, setExchangeBalance] = useState<ExchangeBalanceState>(() => {
+    try {
+      const saved = localStorage.getItem(EXCHANGE_BALANCE_STORAGE_KEY);
+      return saved ? { ...defaultExchangeBalance, ...JSON.parse(saved) } : defaultExchangeBalance;
+    } catch {
+      return defaultExchangeBalance;
+    }
+  });
+
+  const persistExchangeBalance = (next: ExchangeBalanceState) => {
+    setExchangeBalance(next);
+    localStorage.setItem(EXCHANGE_BALANCE_STORAGE_KEY, JSON.stringify(next));
+  };
+
+  const persistSettings = async (newSettings: typeof defaultSettings) => {
+    if (settings?.id) {
+      const { error } = await supabase
+        .from('auto_trade_settings')
+        .update(newSettings)
+        .eq('id', settings.id);
+      if (error) throw error;
+      return;
+    }
+
+    const { error } = await supabase
+      .from('auto_trade_settings')
+      .insert({ ...newSettings, user_id: session!.user.id });
+    if (error) throw error;
+  };
 
   const { data: session } = useQuery({
     queryKey: ['session'],
@@ -82,7 +131,7 @@ const AutoTradePage = () => {
     },
   });
 
-  const { data: settings, isLoading: settingsLoading } = useQuery({
+  const { data: settings } = useQuery({
     queryKey: ['auto-trade-settings'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -158,25 +207,29 @@ const AutoTradePage = () => {
   }, [settings]);
 
   const saveMutation = useMutation({
-    mutationFn: async (newSettings: typeof defaultSettings) => {
-      if (settings?.id) {
-        const { error } = await supabase
-          .from('auto_trade_settings')
-          .update(newSettings)
-          .eq('id', settings.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from('auto_trade_settings')
-          .insert({ ...newSettings, user_id: session!.user.id });
-        if (error) throw error;
-      }
-    },
+    mutationFn: persistSettings,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['auto-trade-settings'] });
       toast.success('Settings saved');
     },
     onError: (err) => toast.error(String(err)),
+  });
+
+  const modeMutation = useMutation({
+    mutationFn: async (paperMode: boolean) => {
+      const nextSettings = { ...localSettings, paper_mode: paperMode };
+      setLocalSettings(nextSettings);
+      await persistSettings(nextSettings);
+      return paperMode;
+    },
+    onSuccess: (paperMode) => {
+      queryClient.invalidateQueries({ queryKey: ['auto-trade-settings'] });
+      toast.success(paperMode ? 'Paper mode enabled' : 'Live mode enabled');
+    },
+    onError: (err) => {
+      setLocalSettings((prev) => ({ ...prev, paper_mode: settings?.paper_mode ?? true }));
+      toast.error(String(err));
+    },
   });
 
   const killSwitchMutation = useMutation({
@@ -193,10 +246,6 @@ const AutoTradePage = () => {
     },
   });
 
-  const [exchangeBalance, setExchangeBalance] = useState<{ available: number | null; total: number | null; livePositions: number; liveOrders: number; lastSynced: string | null }>({
-    available: null, total: null, livePositions: 0, liveOrders: 0, lastSynced: null,
-  });
-
   const syncMutation = useMutation({
     mutationFn: async () => {
       const { data, error } = await supabase.functions.invoke('sync-positions');
@@ -206,20 +255,28 @@ const AutoTradePage = () => {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['positions'] });
       queryClient.invalidateQueries({ queryKey: ['order-history'] });
-      setExchangeBalance({
+      persistExchangeBalance({
         available: data?.balance?.available ?? null,
         total: data?.balance?.total ?? null,
         livePositions: data?.livePositions ?? 0,
         liveOrders: data?.liveOrders ?? 0,
         lastSynced: new Date().toLocaleTimeString(),
+        error: data?.balance ? null : 'Live account sync returned no balance. Check your live API credentials.',
       });
       toast.success(`Synced ${data?.synced ?? 0} positions`);
     },
-    onError: (err) => toast.error(`Sync failed: ${String(err)}`),
+    onError: (err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      persistExchangeBalance({
+        ...exchangeBalance,
+        lastSynced: new Date().toLocaleTimeString(),
+        error: message,
+      });
+      toast.error(`Sync failed: ${message}`);
+    },
   });
 
-  const openPositions = positions.filter(p => p.status === 'open');
-  const closedPositions = positions.filter(p => p.status !== 'open');
+  const openPositions = positions.filter((p) => p.status === 'open');
   const totalPnl = positions.reduce((s, p) => s + (p.pnl ?? 0), 0);
 
   if (!session) {
@@ -238,7 +295,6 @@ const AutoTradePage = () => {
 
   return (
     <div className="flex-1 overflow-auto p-4 space-y-4">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-bold flex items-center gap-2">
           <Zap className="w-5 h-5 text-primary" /> Auto-Trade Engine
@@ -259,22 +315,18 @@ const AutoTradePage = () => {
           {localSettings.paper_mode && (
             <Badge variant="outline" className="text-warning border-warning/40">PAPER MODE</Badge>
           )}
-          {settings?.kill_switch && (
-            <Badge variant="destructive">KILL SWITCH ON</Badge>
-          )}
+          {settings?.kill_switch && <Badge variant="destructive">KILL SWITCH ON</Badge>}
         </div>
       </div>
 
-      {/* Disclaimer */}
       <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-xs text-warning flex gap-2">
         <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
         <span><strong>Educational & simulation purposes only.</strong> Auto-trading involves significant risk. Paper mode is enabled by default. You are solely responsible for any live trades.</span>
       </div>
 
-      {/* Exchange Balance Card */}
       <Card className="border-primary/20">
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between mb-3">
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Wallet className="w-4 h-4 text-primary" />
               <span className="text-sm font-semibold">Kalshi Account</span>
@@ -283,6 +335,7 @@ const AutoTradePage = () => {
               <span className="text-[10px] text-muted-foreground">Last synced: {exchangeBalance.lastSynced}</span>
             )}
           </div>
+
           {exchangeBalance.available !== null ? (
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -304,6 +357,12 @@ const AutoTradePage = () => {
             </div>
           ) : (
             <p className="text-xs text-muted-foreground">Tap <strong>Sync</strong> to pull your live exchange balance and positions.</p>
+          )}
+
+          {exchangeBalance.error && (
+            <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+              {exchangeBalance.error}
+            </div>
           )}
         </CardContent>
       </Card>
@@ -328,7 +387,6 @@ const AutoTradePage = () => {
         </CardContent>
       </Card>
 
-      {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
           { label: 'Open Positions', value: openPositions.length.toString(), icon: Activity, color: 'text-primary' },
@@ -348,7 +406,6 @@ const AutoTradePage = () => {
         ))}
       </div>
 
-      {/* Settings */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm flex items-center gap-2">
@@ -356,7 +413,6 @@ const AutoTradePage = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
-          {/* Master Enable */}
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium">Auto-Trade Enabled</p>
@@ -364,23 +420,26 @@ const AutoTradePage = () => {
             </div>
             <Switch
               checked={localSettings.enabled}
-              onCheckedChange={(v) => setLocalSettings(s => ({ ...s, enabled: v }))}
+              onCheckedChange={(v) => setLocalSettings((s) => ({ ...s, enabled: v }))}
             />
           </div>
 
-          {/* Paper Mode */}
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium">Paper Mode</p>
-              <p className="text-[10px] text-muted-foreground">Simulate trades without real money</p>
+              <p className="text-sm font-medium">Trading Mode</p>
+              <p className="text-[10px] text-muted-foreground">Turn this off to switch from paper to live immediately</p>
             </div>
-            <Switch
-              checked={localSettings.paper_mode}
-              onCheckedChange={(v) => setLocalSettings(s => ({ ...s, paper_mode: v }))}
-            />
+            <div className="flex items-center gap-3">
+              <span className={`text-[10px] font-semibold ${!localSettings.paper_mode ? 'text-muted-foreground' : 'text-warning'}`}>PAPER</span>
+              <Switch
+                checked={!localSettings.paper_mode}
+                onCheckedChange={(checked) => modeMutation.mutate(!checked)}
+                disabled={modeMutation.isPending}
+              />
+              <span className={`text-[10px] font-semibold ${localSettings.paper_mode ? 'text-muted-foreground' : 'text-profit'}`}>LIVE</span>
+            </div>
           </div>
 
-          {/* Max Daily Loss */}
           <div>
             <div className="flex justify-between mb-1">
               <span className="text-sm">Max Daily Loss</span>
@@ -388,12 +447,13 @@ const AutoTradePage = () => {
             </div>
             <Slider
               value={[localSettings.max_daily_loss]}
-              min={10} max={500} step={10}
-              onValueChange={([v]) => setLocalSettings(s => ({ ...s, max_daily_loss: v }))}
+              min={10}
+              max={500}
+              step={10}
+              onValueChange={([v]) => setLocalSettings((s) => ({ ...s, max_daily_loss: v }))}
             />
           </div>
 
-          {/* Max Position Size */}
           <div>
             <div className="flex justify-between mb-1">
               <span className="text-sm">Max Position Size</span>
@@ -401,12 +461,13 @@ const AutoTradePage = () => {
             </div>
             <Slider
               value={[localSettings.max_position_size]}
-              min={5} max={200} step={5}
-              onValueChange={([v]) => setLocalSettings(s => ({ ...s, max_position_size: v }))}
+              min={5}
+              max={200}
+              step={5}
+              onValueChange={([v]) => setLocalSettings((s) => ({ ...s, max_position_size: v }))}
             />
           </div>
 
-          {/* Max Open Positions */}
           <div>
             <div className="flex justify-between mb-1">
               <span className="text-sm">Max Open Positions</span>
@@ -414,12 +475,13 @@ const AutoTradePage = () => {
             </div>
             <Slider
               value={[localSettings.max_open_positions]}
-              min={1} max={20} step={1}
-              onValueChange={([v]) => setLocalSettings(s => ({ ...s, max_open_positions: v }))}
+              min={1}
+              max={20}
+              step={1}
+              onValueChange={([v]) => setLocalSettings((s) => ({ ...s, max_open_positions: v }))}
             />
           </div>
 
-          {/* Min Signal Score */}
           <div>
             <div className="flex justify-between mb-1">
               <span className="text-sm">Min Signal Score</span>
@@ -427,12 +489,13 @@ const AutoTradePage = () => {
             </div>
             <Slider
               value={[localSettings.min_signal_score]}
-              min={1} max={10} step={0.5}
-              onValueChange={([v]) => setLocalSettings(s => ({ ...s, min_signal_score: v }))}
+              min={1}
+              max={10}
+              step={0.5}
+              onValueChange={([v]) => setLocalSettings((s) => ({ ...s, min_signal_score: v }))}
             />
           </div>
 
-          {/* Min Confidence */}
           <div>
             <div className="flex justify-between mb-1">
               <span className="text-sm">Min Confidence</span>
@@ -440,12 +503,13 @@ const AutoTradePage = () => {
             </div>
             <Slider
               value={[localSettings.min_confidence]}
-              min={10} max={95} step={5}
-              onValueChange={([v]) => setLocalSettings(s => ({ ...s, min_confidence: v }))}
+              min={10}
+              max={95}
+              step={5}
+              onValueChange={([v]) => setLocalSettings((s) => ({ ...s, min_confidence: v }))}
             />
           </div>
 
-          {/* Cooldown */}
           <div>
             <div className="flex justify-between mb-1">
               <span className="text-sm">Cooldown Between Trades</span>
@@ -453,24 +517,27 @@ const AutoTradePage = () => {
             </div>
             <Slider
               value={[localSettings.cooldown_seconds]}
-              min={60} max={1800} step={60}
-              onValueChange={([v]) => setLocalSettings(s => ({ ...s, cooldown_seconds: v }))}
+              min={60}
+              max={1800}
+              step={60}
+              onValueChange={([v]) => setLocalSettings((s) => ({ ...s, cooldown_seconds: v }))}
             />
           </div>
 
-          {/* Providers */}
           <div>
             <p className="text-sm mb-2">Allowed Providers</p>
             <div className="flex gap-2">
-              {['kalshi', 'polymarket'].map(p => (
+              {['kalshi', 'polymarket'].map((p) => (
                 <button
                   key={p}
-                  onClick={() => setLocalSettings(s => ({
-                    ...s,
-                    allowed_providers: s.allowed_providers.includes(p)
-                      ? s.allowed_providers.filter(x => x !== p)
-                      : [...s.allowed_providers, p],
-                  }))}
+                  onClick={() =>
+                    setLocalSettings((s) => ({
+                      ...s,
+                      allowed_providers: s.allowed_providers.includes(p)
+                        ? s.allowed_providers.filter((x) => x !== p)
+                        : [...s.allowed_providers, p],
+                    }))
+                  }
                   className={`px-3 py-1.5 rounded text-xs font-bold uppercase transition-colors ${
                     localSettings.allowed_providers.includes(p)
                       ? 'bg-primary/20 text-primary'
@@ -493,7 +560,6 @@ const AutoTradePage = () => {
         </CardContent>
       </Card>
 
-      {/* Open Positions */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm flex items-center gap-2">
@@ -505,7 +571,7 @@ const AutoTradePage = () => {
             <p className="text-sm text-muted-foreground text-center py-4">No open positions</p>
           ) : (
             <div className="space-y-2">
-              {openPositions.map(pos => (
+              {openPositions.map((pos) => (
                 <div key={pos.id} className="flex items-center justify-between bg-surface-2 rounded-lg p-3">
                   <div>
                     <p className="text-xs font-medium truncate max-w-[200px]">{pos.market_title}</p>
@@ -530,7 +596,6 @@ const AutoTradePage = () => {
         </CardContent>
       </Card>
 
-      {/* Order History */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm flex items-center gap-2">
@@ -554,7 +619,7 @@ const AutoTradePage = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {orders.slice(0, 20).map(o => (
+                  {orders.slice(0, 20).map((o) => (
                     <tr key={o.id} className="border-b border-border/30">
                       <td className="px-2 py-1.5 text-muted-foreground">{new Date(o.created_at).toLocaleTimeString()}</td>
                       <td className="px-2 py-1.5 font-mono truncate max-w-[120px]">{o.market_id}</td>

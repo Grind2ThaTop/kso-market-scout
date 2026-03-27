@@ -35,13 +35,10 @@ function signKalshi(
   body: string = ""
 ): Record<string, string> {
   const timestamp = String(Date.now());
-  // Kalshi requires signing the path WITHOUT query parameters
   const pathWithoutQuery = path.split("?")[0];
-  const payload = `${timestamp}${method.toUpperCase()}${pathWithoutQuery}${body}`;
+  const signedPath = `/trade-api/v2${pathWithoutQuery}`;
+  const payload = `${timestamp}${method.toUpperCase()}${signedPath}${body}`;
   const pem = normalizePem(privateKeyPem);
-  console.log("PEM first 80 chars:", pem.substring(0, 80));
-  console.log("PEM line count:", pem.split("\n").length);
-  console.log("PEM has BEGIN:", pem.includes("-----BEGIN"));
   const signer = createSign("RSA-SHA256");
   signer.update(payload);
   const signature = signer.sign(
