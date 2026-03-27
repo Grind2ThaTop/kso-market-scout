@@ -35,7 +35,9 @@ function signKalshi(
   body: string = ""
 ): Record<string, string> {
   const timestamp = String(Date.now());
-  const payload = `${timestamp}${method.toUpperCase()}${path}${body}`;
+  // Kalshi requires signing the path WITHOUT query parameters
+  const pathWithoutQuery = path.split("?")[0];
+  const payload = `${timestamp}${method.toUpperCase()}${pathWithoutQuery}${body}`;
   const pem = normalizePem(privateKeyPem);
   console.log("PEM first 80 chars:", pem.substring(0, 80));
   console.log("PEM line count:", pem.split("\n").length);
