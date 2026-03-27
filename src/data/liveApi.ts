@@ -107,6 +107,22 @@ const fetchIntegrationProviderMarkets = async (provider: 'kalshi' | 'polymarket'
   return response.json();
 };
 
+const fetchIntegrationMarketsBestEffort = async () => {
+  const results = await Promise.allSettled([
+    fetchIntegrationProviderMarkets('kalshi'),
+    fetchIntegrationProviderMarkets('polymarket'),
+  ]);
+
+  const mergedRows: unknown[] = [];
+  for (const result of results) {
+    if (result.status === 'fulfilled') {
+      mergedRows.push(...parseArray(result.value));
+    }
+  }
+
+  return mergedRows;
+};
+
 const toRecord = (value: unknown): Record<string, unknown> => (
   value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
 );
@@ -238,11 +254,7 @@ export async function fetchScanSnapshot(): Promise<ScanSnapshot> {
       return { fetchedAt, source: 'live-api', markets, quotes, signals };
     }
 
-    const [kalshiPayload, polymarketPayload] = await Promise.all([
-      fetchIntegrationProviderMarkets('kalshi'),
-      fetchIntegrationProviderMarkets('polymarket'),
-    ]);
-    const mergedRows = [...parseArray(kalshiPayload), ...parseArray(polymarketPayload)];
+    const mergedRows = await fetchIntegrationMarketsBestEffort();
     if (mergedRows.length === 0) throw new MissingDataSourceError();
 
     const { markets, quotes } = normalizeRows(mergedRows, fetchedAt);
