@@ -164,6 +164,9 @@ const Dashboard = () => {
           <Zap className="w-5 h-5 text-primary" /> Live Scanner
         </h1>
         <div className="flex items-center gap-3">
+          <button onClick={() => refetch()} disabled={isFetching} className="px-3 py-1 bg-primary text-primary-foreground rounded text-xs font-bold hover:opacity-90 transition disabled:opacity-50">
+            {isFetching ? 'Scanning…' : '⚡ Scan Now'}
+          </button>
           <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${freshnessColors[freshness]}`}>{freshness}</span>
           <span className="text-[10px] text-muted-foreground">
             {new Date(data!.fetchedAt).toLocaleTimeString()} · {data?.source === 'demo' ? 'Demo' : data?.source === 'integrations-api' ? 'Live API' : 'Feed'}
