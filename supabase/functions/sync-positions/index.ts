@@ -9,6 +9,24 @@ const corsHeaders = {
 
 const KALSHI_BASE = "https://api.elections.kalshi.com/trade-api/v2";
 
+/** Normalize a PEM key that may have lost its line breaks */
+function normalizePem(raw: string): string {
+  // If it already looks like a proper PEM with line breaks, return as-is
+  if (raw.includes("-----BEGIN") && raw.split("\n").length > 3) return raw;
+  
+  // Strip any existing headers/whitespace, then re-wrap
+  const isRsa = raw.includes("RSA PRIVATE KEY");
+  const header = isRsa ? "-----BEGIN RSA PRIVATE KEY-----" : "-----BEGIN PRIVATE KEY-----";
+  const footer = isRsa ? "-----END RSA PRIVATE KEY-----" : "-----END PRIVATE KEY-----";
+  const b64 = raw
+    .replace(/-----BEGIN (RSA )?PRIVATE KEY-----/g, "")
+    .replace(/-----END (RSA )?PRIVATE KEY-----/g, "")
+    .replace(/\s/g, "");
+  // Re-wrap at 64 chars per line
+  const lines = b64.match(/.{1,64}/g) || [];
+  return [header, ...lines, footer].join("\n");
+}
+
 function signKalshi(
   apiKeyId: string,
   privateKeyPem: string,
@@ -18,11 +36,12 @@ function signKalshi(
 ): Record<string, string> {
   const timestamp = String(Date.now());
   const payload = `${timestamp}${method.toUpperCase()}${path}${body}`;
+  const pem = normalizePem(privateKeyPem);
   const signer = createSign("RSA-SHA256");
   signer.update(payload);
   const signature = signer.sign(
     {
-      key: privateKeyPem,
+      key: pem,
       padding: constants.RSA_PKCS1_PSS_PADDING,
       saltLength: constants.RSA_PSS_SALTLEN_DIGEST,
     },
