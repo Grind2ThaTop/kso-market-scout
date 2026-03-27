@@ -1,4 +1,4 @@
-import { Market, QuoteSnapshot, Signal, TradingProfile } from './types';
+import { Market, QuoteSnapshot, Signal, SignalDirection, TradingProfile } from './types';
 import { buildMarketUrl } from '@/lib/marketUrlBuilder';
 
 const DEFAULT_POLL_MS = 15000;
@@ -32,10 +32,10 @@ const parseArray = (payload: unknown): unknown[] => {
 
 const normalizeCategory = (value: unknown): Market['category'] => {
   const raw = String(value ?? '').toLowerCase();
-  if (raw.includes('sport')) return 'sports';
-  if (raw.includes('polit')) return 'politics';
-  if (raw.includes('weath')) return 'weather';
-  if (raw.includes('cult') || raw.includes('entertain')) return 'culture';
+  if (raw.includes('sport') || raw.includes('nba') || raw.includes('nfl') || raw.includes('ufc') || raw.includes('mlb') || raw.includes('nhl')) return 'sports';
+  if (raw.includes('polit') || raw.includes('elect') || raw.includes('senate') || raw.includes('congress')) return 'politics';
+  if (raw.includes('weath') || raw.includes('temp') || raw.includes('rain') || raw.includes('snow') || raw.includes('hurricane')) return 'weather';
+  if (raw.includes('cult') || raw.includes('entertain') || raw.includes('movie') || raw.includes('music')) return 'culture';
   return 'economics';
 };
 
@@ -45,15 +45,18 @@ const inferQuote = (row: Record<string, unknown>) => {
     toNumber(row.bestBid) ??
     toNumber(row.yesBid) ??
     toNumber(row.yes_bid) ??
+    toNumber(row.yes_bid_dollars) ??
     toNumber(row.bid) ??
     toNumber(row.lastTradePrice) ??
     toNumber(row.last_price) ??
+    toNumber(row.last_price_dollars) ??
     toNumber(row.final_last_traded_price);
   const rawAsk =
     toNumber(row.bestYesAsk) ??
     toNumber(row.bestAsk) ??
     toNumber(row.yesAsk) ??
     toNumber(row.yes_ask) ??
+    toNumber(row.yes_ask_dollars) ??
     toNumber(row.ask) ??
     rawBid;
 
@@ -61,8 +64,8 @@ const inferQuote = (row: Record<string, unknown>) => {
 
   const bid = normalizePrice(rawBid);
   const ask = normalizePrice(rawAsk);
-  const noBid = toNumber(row.bestNoBid) ?? toNumber(row.noBid) ?? toNumber(row.no_bid);
-  const noAsk = toNumber(row.bestNoAsk) ?? toNumber(row.noAsk) ?? toNumber(row.no_ask);
+  const noBid = toNumber(row.bestNoBid) ?? toNumber(row.noBid) ?? toNumber(row.no_bid) ?? toNumber(row.no_bid_dollars);
+  const noAsk = toNumber(row.bestNoAsk) ?? toNumber(row.noAsk) ?? toNumber(row.no_ask) ?? toNumber(row.no_ask_dollars);
 
   const normalizedNoBid = noBid == null ? null : normalizePrice(noBid);
   const normalizedNoAsk = noAsk == null ? null : normalizePrice(noAsk);
@@ -72,10 +75,7 @@ const inferQuote = (row: Record<string, unknown>) => {
 
   const bestYesBid = clamp01(Math.min(resolvedBid, resolvedAsk));
   const bestYesAsk = clamp01(Math.max(resolvedBid, resolvedAsk));
-  return {
-    bestYesBid,
-    bestYesAsk,
-  };
+  return { bestYesBid, bestYesAsk };
 };
 
 export interface ScanSnapshot {
@@ -84,6 +84,8 @@ export interface ScanSnapshot {
   markets: Market[];
   quotes: QuoteSnapshot[];
   signals: Signal[];
+  droppedCount: number;
+  providerStatus: Record<string, 'connected' | 'error' | 'empty'>;
 }
 
 export interface ScannerConfig {
@@ -120,33 +122,40 @@ export class MissingDataSourceError extends Error {
 
 const resolveIntegrationsBase = () => scannerConfig.integrationsApiBase?.trim() || '';
 
-const fetchIntegrationProviderMarkets = async (provider: 'kalshi' | 'polymarket') => {
-  const base = resolveIntegrationsBase();
-  const url = `${base}/api/prediction-markets/markets?provider=${provider}`;
-  const response = await fetch(url, { headers: { Accept: 'application/json' } });
-  if (!response.ok) throw new Error(`Integrations market request failed (${provider}, ${response.status}).`);
-  return response.json();
+const fetchIntegrationProviderMarkets = async (provider: 'kalshi' | 'polymarket'): Promise<{ provider: string; rows: unknown[]; status: 'connected' | 'error' | 'empty' }> => {
+  try {
+    const base = resolveIntegrationsBase();
+    const url = `${base}/api/prediction-markets/markets?provider=${provider}`;
+    const response = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!response.ok) return { provider, rows: [], status: 'error' };
+    const data = await response.json();
+    const rows = parseArray(data);
+    return { provider, rows, status: rows.length > 0 ? 'connected' : 'empty' };
+  } catch {
+    return { provider, rows: [], status: 'error' };
+  }
 };
 
-const fetchIntegrationMarketsBestEffort = async () => {
+const fetchIntegrationMarketsBestEffort = async (): Promise<{ rows: unknown[]; providerStatus: Record<string, 'connected' | 'error' | 'empty'> }> => {
   const results = await Promise.allSettled([
     fetchIntegrationProviderMarkets('kalshi'),
     fetchIntegrationProviderMarkets('polymarket'),
   ]);
 
   const mergedRows: unknown[] = [];
+  const providerStatus: Record<string, 'connected' | 'error' | 'empty'> = {};
+
   for (const result of results) {
     if (result.status === 'fulfilled') {
-      mergedRows.push(...parseArray(result.value));
+      mergedRows.push(...result.value.rows);
+      providerStatus[result.value.provider] = result.value.status;
+    } else {
+      providerStatus['unknown'] = 'error';
     }
   }
 
-  return mergedRows;
+  return { rows: mergedRows, providerStatus };
 };
-
-const toRecord = (value: unknown): Record<string, unknown> => (
-  value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
-);
 
 const pickFirstString = (...values: unknown[]): string => {
   for (const value of values) {
@@ -176,20 +185,78 @@ const resolveMarketUrl = (
   eventSlug: string,
 ): string => {
   const directUrl = pickFirstString(
-    row.market_url,
-    row.marketUrl,
-    row.url,
-    row.permalink,
-    sourceRow.market_url,
-    sourceRow.marketUrl,
-    sourceRow.url,
-    sourceRow.permalink,
+    row.market_url, row.marketUrl, row.url, row.permalink,
+    sourceRow.market_url, sourceRow.marketUrl, sourceRow.url, sourceRow.permalink,
   );
   if (directUrl.startsWith('http://') || directUrl.startsWith('https://')) return directUrl;
   return buildMarketUrl({ platform, marketSlug, eventSlug }) || '';
 };
 
+/** Check if a market is closed, resolved, expired, or otherwise not tradable */
+const isMarketDead = (row: Record<string, unknown>, sourceRow: Record<string, unknown>): boolean => {
+  // Check explicit closed flag
+  const closed = row.closed ?? sourceRow.closed;
+  if (closed === true || String(closed).toLowerCase() === 'true') return true;
+
+  // Check closedTime (if set and in the past)
+  const closedTime = pickFirstString(row.closedTime, sourceRow.closedTime, row.closed_time, sourceRow.closed_time);
+  if (closedTime) {
+    const ct = new Date(closedTime).getTime();
+    if (Number.isFinite(ct) && ct < Date.now()) return true;
+  }
+
+  // Check status field for resolved/settled/etc
+  const status = pickFirstString(row.status, sourceRow.status).toLowerCase();
+  if (/(closed|resolved|settled|final|expired|inactive|cancelled)/.test(status)) return true;
+
+  // Check active flag
+  const activeFlag = row.active ?? sourceRow.active;
+  if (activeFlag === false || String(activeFlag).toLowerCase() === 'false') return true;
+
+  // Check end date
+  const eventEnd = pickFirstString(
+    row.eventEnd, row.endDate, row.end_date, row.closeTime, row.close_time, row.expiration, row.expiration_time,
+    sourceRow.eventEnd, sourceRow.endDate, sourceRow.end_date, sourceRow.closeTime, sourceRow.close_time, sourceRow.expiration, sourceRow.expiration_time,
+  );
+  if (eventEnd) {
+    const endMs = new Date(eventEnd).getTime();
+    if (Number.isFinite(endMs) && endMs <= Date.now()) return true;
+  }
+
+  // Check if resolution value is set (market already resolved)
+  const result = pickFirstString(row.result, sourceRow.result, row.resolution, sourceRow.resolution);
+  if (result && result !== '' && result !== 'pending' && result !== 'active') return true;
+
+  return false;
+};
+
+/** Check if a market has zero liquidity / zero volume - ghost market */
+const isGhostMarket = (row: Record<string, unknown>, sourceRow: Record<string, unknown>): boolean => {
+  const liqNum = pickFirstNumber(row.liquidityNum, sourceRow.liquidityNum, row.liquidity, sourceRow.liquidity);
+  const volNum = pickFirstNumber(row.volumeNum, sourceRow.volumeNum, row.volume, sourceRow.volume);
+  const vol24h = pickFirstNumber(row.volume24hr, sourceRow.volume24hr, row.volume_24h, sourceRow.volume_24h, row.volume24h, sourceRow.volume24h);
+
+  // If explicit liquidity and volume are both 0, it's a ghost
+  if (liqNum === 0 && volNum !== null && volNum < 100) return true;
+  // If all volume metrics are 0
+  if (vol24h === 0 && (volNum === 0 || volNum === null) && (liqNum === 0 || liqNum === null)) return true;
+
+  return false;
+};
+
+/** Filter out junk titles (mega-parlays, unreadable titles) */
+const isJunkTitle = (title: string): boolean => {
+  // Multi-leg parlays with extremely long titles
+  if (title.length > 200) return true;
+  // Titles that are just comma-separated player stats
+  if ((title.match(/,/g) || []).length > 5) return true;
+  return false;
+};
+
 const normalizeRows = (rows: unknown[], fetchedAt: string) => {
+  let droppedCount = 0;
+  const seenIds = new Set<string>();
+
   const normalized = rows
     .map((item): { market: Market; quote: QuoteSnapshot } | null => {
       if (!item || typeof item !== 'object') return null;
@@ -198,36 +265,69 @@ const normalizeRows = (rows: unknown[], fetchedAt: string) => {
 
       const id = pickFirstString(row.id, row.marketId, row.conditionId, row.ticker, row.slug, sourceRow.id, sourceRow.ticker, sourceRow.conditionId);
       const title = pickFirstString(row.title, row.question, row.name, sourceRow.title, sourceRow.question, sourceRow.name);
-      if (!id || !title) return null;
+      if (!id || !title) { droppedCount++; return null; }
+
+      // Dedup
+      if (seenIds.has(id)) { droppedCount++; return null; }
+      seenIds.add(id);
+
+      // Filter dead markets
+      if (isMarketDead(row, sourceRow)) { droppedCount++; return null; }
+
+      // Filter ghost markets
+      if (isGhostMarket(row, sourceRow)) { droppedCount++; return null; }
+
+      // Filter junk titles
+      if (isJunkTitle(title)) { droppedCount++; return null; }
 
       const quote = inferQuote({ ...sourceRow, ...row });
-      if (!quote) return null;
+      if (!quote) { droppedCount++; return null; }
+
+      // Filter markets with no real price data (both bid and ask at 0 or 1)
+      if (quote.bestYesBid <= 0.01 && quote.bestYesAsk <= 0.01) { droppedCount++; return null; }
+      if (quote.bestYesBid >= 0.99 && quote.bestYesAsk >= 0.99) { droppedCount++; return null; }
 
       const eventEnd = pickFirstString(
-        row.eventEnd, row.endDate, row.end_date, row.closeTime, row.expiration,
-        sourceRow.eventEnd, sourceRow.endDate, sourceRow.end_date, sourceRow.closeTime, sourceRow.expiration,
+        row.eventEnd, row.endDate, row.end_date, row.closeTime, row.close_time, row.expiration, row.expiration_time,
+        sourceRow.eventEnd, sourceRow.endDate, sourceRow.end_date, sourceRow.closeTime, sourceRow.close_time, sourceRow.expiration, sourceRow.expiration_time,
       );
-      const status = pickFirstString(row.status, sourceRow.status).toLowerCase();
-      const activeFlag = row.active ?? sourceRow.active;
-      const isInactive = activeFlag === false || String(activeFlag).toLowerCase() === 'false';
-      const isClosedStatus = /(closed|resolved|settled|final|expired|inactive)/.test(status);
-      const eventEndMs = eventEnd ? new Date(eventEnd).getTime() : Number.NaN;
-      const isExpired = Number.isFinite(eventEndMs) && eventEndMs <= Date.now();
-      if (isInactive || isClosedStatus || isExpired) return null;
 
-      const volume = pickFirstNumber(
-        row.volume24h, row.volume, row.liquidity,
-        sourceRow.volume24h, sourceRow.volume, sourceRow.liquidity, sourceRow.volume_num,
-        0,
+      const volume24h = pickFirstNumber(
+        row.volume24hr, sourceRow.volume24hr, row.volume_24h, sourceRow.volume_24h,
+        row.volume24h, sourceRow.volume24h,
       ) ?? 0;
-      const liquidityScore = Math.max(1, Math.min(99, Math.round(Math.log10(volume + 10) * 30)));
+      const totalVol = pickFirstNumber(
+        row.volumeNum, sourceRow.volumeNum, row.volume, sourceRow.volume,
+      ) ?? 0;
+      const liquidityRaw = pickFirstNumber(
+        row.liquidityNum, sourceRow.liquidityNum, row.liquidity, sourceRow.liquidity,
+        row.liquidity_dollars, sourceRow.liquidity_dollars,
+      ) ?? 0;
+      const liquidityScore = Math.max(1, Math.min(99, Math.round(Math.log10(Math.max(totalVol, liquidityRaw) + 10) * 30)));
+
+      const lastUpdated = pickFirstString(
+        row.updatedAt, row.updated_time, row.lastUpdated, sourceRow.updatedAt, sourceRow.updated_time, sourceRow.lastUpdated,
+        fetchedAt,
+      );
+      const lastTradeTime = pickFirstString(
+        row.lastTradeTime, sourceRow.lastTradeTime, row.updated_time, sourceRow.updated_time, lastUpdated,
+      );
 
       const platform = (pickFirstString(row.platform, row.provider, sourceRow.platform, sourceRow.provider, 'polymarket').toLowerCase() as Market['platform']) || 'polymarket';
       const marketSlug = pickFirstString(
         row.marketSlug, row.slug, row.conditionSlug, row.ticker,
         sourceRow.marketSlug, sourceRow.slug, sourceRow.conditionSlug, sourceRow.ticker,
       );
-      const eventSlug = pickFirstString(row.eventSlug, row.event, row.series_ticker, sourceRow.eventSlug, sourceRow.event, sourceRow.event_ticker, sourceRow.series_ticker);
+      const eventSlug = pickFirstString(
+        row.eventSlug, row.event, row.series_ticker, sourceRow.eventSlug, sourceRow.event, sourceRow.event_ticker, sourceRow.series_ticker,
+      );
+
+      const yesPrice = (quote.bestYesBid + quote.bestYesAsk) / 2;
+      const noPrice = 1 - yesPrice;
+
+      // Price changes - try to extract from source, default to 0
+      const priceChange1h = pickFirstNumber(row.oneHourPriceChange, sourceRow.oneHourPriceChange) ?? 0;
+      const priceChange24h = pickFirstNumber(row.oneDayPriceChange, sourceRow.oneDayPriceChange) ?? 0;
 
       const market: Market = {
         id,
@@ -238,9 +338,18 @@ const normalizeRows = (rows: unknown[], fetchedAt: string) => {
         eventSlug,
         category: normalizeCategory(row.category ?? row.group ?? row.tag ?? sourceRow.category ?? sourceRow.group ?? sourceRow.tag),
         eventEnd: eventEnd || fetchedAt,
-        settlementRules: pickFirstString(row.rules, row.description, sourceRow.rules, sourceRow.description, 'See exchange rules.'),
+        settlementRules: pickFirstString(row.rules, row.description, sourceRow.rules, sourceRow.description, row.rules_primary, sourceRow.rules_primary, 'See exchange rules.'),
         liquidityScore,
         market_url: resolveMarketUrl(row, sourceRow, platform, marketSlug, eventSlug),
+        volume24h,
+        lastTradeTime,
+        lastUpdated,
+        yesPrice: +yesPrice.toFixed(4),
+        noPrice: +noPrice.toFixed(4),
+        impliedProbYes: +(yesPrice * 100).toFixed(1),
+        impliedProbNo: +(noPrice * 100).toFixed(1),
+        priceChange1h,
+        priceChange24h,
       };
 
       const normalizedQuote: QuoteSnapshot = {
@@ -260,11 +369,14 @@ const normalizeRows = (rows: unknown[], fetchedAt: string) => {
   return {
     markets: normalized.map((row) => row.market),
     quotes: normalized.map((row) => row.quote),
+    droppedCount,
   };
 };
 
 export async function fetchScanSnapshot(): Promise<ScanSnapshot> {
   const fetchedAt = new Date().toISOString();
+  const providerStatus: Record<string, 'connected' | 'error' | 'empty'> = {};
+
   try {
     if (scannerConfig.apiUrl) {
       const headers: HeadersInit = { Accept: 'application/json' };
@@ -273,31 +385,35 @@ export async function fetchScanSnapshot(): Promise<ScanSnapshot> {
         headers['X-API-Key'] = scannerConfig.apiKey;
       }
       const response = await fetch(scannerConfig.apiUrl, { headers });
-      if (!response.ok) {
-        throw new Error(`Live market API request failed (${response.status}).`);
-      }
+      if (!response.ok) throw new Error(`Live market API request failed (${response.status}).`);
       const payload = await response.json();
-      const { markets, quotes } = normalizeRows(parseArray(payload), fetchedAt);
+      const { markets, quotes, droppedCount } = normalizeRows(parseArray(payload), fetchedAt);
       const signals = buildSignals(markets, quotes);
-      return { fetchedAt, source: 'live-api', markets, quotes, signals };
+      return { fetchedAt, source: 'live-api', markets, quotes, signals, droppedCount, providerStatus: { api: 'connected' } };
     }
 
-    const mergedRows = await fetchIntegrationMarketsBestEffort();
-    if (mergedRows.length === 0) throw new MissingDataSourceError();
+    const result = await fetchIntegrationMarketsBestEffort();
+    Object.assign(providerStatus, result.providerStatus);
 
-    const { markets, quotes } = normalizeRows(mergedRows, fetchedAt);
+    if (result.rows.length === 0) {
+      // No live data at all - fall back to demo
+      const { DEMO_MARKETS, DEMO_QUOTES, DEMO_SIGNALS } = await import('./demoData');
+      return { fetchedAt, source: 'demo', markets: DEMO_MARKETS, quotes: DEMO_QUOTES, signals: DEMO_SIGNALS, droppedCount: 0, providerStatus };
+    }
+
+    const { markets, quotes, droppedCount } = normalizeRows(result.rows, fetchedAt);
+
+    if (markets.length === 0) {
+      // All markets were filtered out (stale/dead) - fall back to demo
+      const { DEMO_MARKETS, DEMO_QUOTES, DEMO_SIGNALS } = await import('./demoData');
+      return { fetchedAt, source: 'demo', markets: DEMO_MARKETS, quotes: DEMO_QUOTES, signals: DEMO_SIGNALS, droppedCount, providerStatus };
+    }
+
     const signals = buildSignals(markets, quotes);
-    return { fetchedAt, source: 'integrations-api', markets, quotes, signals };
+    return { fetchedAt, source: 'integrations-api', markets, quotes, signals, droppedCount, providerStatus };
   } catch {
-    // Fall back to demo data when live endpoints are unavailable
     const { DEMO_MARKETS, DEMO_QUOTES, DEMO_SIGNALS } = await import('./demoData');
-    return {
-      fetchedAt,
-      source: 'demo',
-      markets: DEMO_MARKETS,
-      quotes: DEMO_QUOTES,
-      signals: DEMO_SIGNALS,
-    };
+    return { fetchedAt, source: 'demo', markets: DEMO_MARKETS, quotes: DEMO_QUOTES, signals: DEMO_SIGNALS, droppedCount: 0, providerStatus };
   }
 }
 
@@ -307,34 +423,113 @@ function buildSignals(markets: Market[], quotes: QuoteSnapshot[]): Signal[] {
       const market = markets.find((candidate) => candidate.id === quote.marketId);
       if (!market) return null;
 
-      const momentum = clamp01(Math.abs(0.5 - quote.bestYesBid) * 2);
+      const mid = (quote.bestYesBid + quote.bestYesAsk) / 2;
+      const momentum = clamp01(Math.abs(0.5 - mid) * 2);
       const imbalance = clamp01(1 - quote.spread * 20);
       const expectedNetEdge = Math.max(0, 0.02 - quote.spread / 2);
       const score = Math.round((momentum * 0.4 + imbalance * 0.4 + expectedNetEdge * 10) * 100);
-      const confidence = Math.min(95, Math.max(30, Math.round((market.liquidityScore / 100) * 90)));
-      const action: Signal['action'] = expectedNetEdge > 0.01
-        ? quote.bestYesBid >= 0.5
-          ? 'paper_buy_yes'
-          : 'paper_buy_no'
-        : 'wait';
+      const confidence = Math.min(95, Math.max(15, Math.round((market.liquidityScore / 100) * 90)));
+
+      // Signal direction logic
+      let direction: SignalDirection = 'PASS';
+      let action: Signal['action'] = 'wait';
+      let thesis = 'No clear edge detected. Wide spread or weak liquidity.';
+      let sentimentBias: Signal['sentimentBias'] = 'neutral';
+
+      const spreadPct = quote.spread;
+      const hasEdge = expectedNetEdge > 0.005;
+      const hasLiquidity = market.liquidityScore > 40;
+      const tightSpread = spreadPct < 0.04;
+
+      if (hasEdge && hasLiquidity && tightSpread) {
+        if (mid >= 0.55) {
+          direction = 'YES';
+          action = 'paper_buy_yes';
+          sentimentBias = 'bullish';
+          thesis = `YES side shows momentum (mid=${(mid * 100).toFixed(1)}¢). Tight spread (${(spreadPct * 100).toFixed(1)}¢) with liquidity score ${market.liquidityScore}. Edge exists at current ask.`;
+        } else if (mid <= 0.45) {
+          direction = 'NO';
+          action = 'paper_buy_no';
+          sentimentBias = 'bearish';
+          thesis = `NO side favored (YES mid=${(mid * 100).toFixed(1)}¢). Market pricing event as unlikely. Spread tight enough for entry.`;
+        } else {
+          // Near 50/50 - check for any tilt
+          if (market.priceChange1h > 0.02) {
+            direction = 'YES';
+            action = 'paper_buy_yes';
+            sentimentBias = 'bullish';
+            thesis = `Coin-flip market but momentum tilting YES (1h change: +${(market.priceChange1h * 100).toFixed(1)}¢). Worth a momentum play.`;
+          } else if (market.priceChange1h < -0.02) {
+            direction = 'NO';
+            action = 'paper_buy_no';
+            sentimentBias = 'bearish';
+            thesis = `Coin-flip market with downward momentum (1h change: ${(market.priceChange1h * 100).toFixed(1)}¢). Fade the YES side.`;
+          } else {
+            direction = 'PASS';
+            thesis = `Market near 50/50 with no directional catalyst. Spread: ${(spreadPct * 100).toFixed(1)}¢. Wait for movement.`;
+          }
+        }
+      } else if (!hasLiquidity) {
+        thesis = `Low liquidity (score: ${market.liquidityScore}). Risk of slippage exceeds potential edge.`;
+      } else if (!tightSpread) {
+        thesis = `Spread too wide (${(spreadPct * 100).toFixed(1)}¢). Entry cost would eat edge.`;
+      }
+
+      // Entry/target/invalidation zones
+      const entryLow = direction === 'YES' ? quote.bestYesAsk : direction === 'NO' ? quote.bestNoAsk : mid;
+      const entryHigh = entryLow + 0.02;
+      const targetPrice = direction === 'YES'
+        ? Math.min(0.95, entryLow + 0.08)
+        : direction === 'NO'
+          ? Math.min(0.95, (1 - mid) + 0.08)
+          : mid;
+      const invalidationPrice = direction === 'YES'
+        ? Math.max(0.05, entryLow - 0.06)
+        : direction === 'NO'
+          ? Math.max(0.05, (1 - mid) - 0.06)
+          : mid;
+
+      const riskReward = targetPrice - entryLow > 0 && entryLow - invalidationPrice > 0
+        ? +((targetPrice - entryLow) / (entryLow - invalidationPrice)).toFixed(2)
+        : 0;
+
+      // Catalyst strength - based on how close to event and price movement
+      const hoursToExpiry = (new Date(market.eventEnd).getTime() - Date.now()) / 3_600_000;
+      const catalystStrength = Math.min(100, Math.round(
+        (hoursToExpiry < 24 ? 40 : hoursToExpiry < 72 ? 20 : 10) +
+        Math.abs(market.priceChange1h) * 500 +
+        Math.abs(market.priceChange24h) * 200
+      ));
+
+      // Smart money flag - inferred from volume + price movement pattern
+      const smartMoneyFlag = market.volume24h > 10000 && Math.abs(market.priceChange1h) > 0.03;
 
       return {
         id: `sig-${market.id}`,
         marketId: market.id,
-        setupType: 'Live spread scanner',
+        setupType: direction === 'PASS' ? 'No Setup' : catalystStrength > 50 ? 'Catalyst Play' : momentum > 0.6 ? 'Momentum Entry' : 'Spread Capture',
         score,
         expectedNetEdge,
         confidence,
         action,
-        rationale: `Generated from live quote spread (${(quote.spread * 100).toFixed(2)}¢) and liquidity score (${market.liquidityScore}).`,
+        direction,
+        rationale: `Spread ${(quote.spread * 100).toFixed(1)}¢ | Liq ${market.liquidityScore} | Vol $${market.volume24h.toLocaleString()}`,
+        thesis,
         momentum,
         imbalance,
         timeToExpiry: formatTimeToExpiry(market.eventEnd),
+        entryZone: [+entryLow.toFixed(4), +entryHigh.toFixed(4)] as [number, number],
+        targetPrice: +targetPrice.toFixed(4),
+        invalidationPrice: +invalidationPrice.toFixed(4),
+        riskReward,
+        catalystStrength,
+        sentimentBias,
+        smartMoneyFlag,
       } satisfies Signal;
     })
     .filter((row): row is Signal => Boolean(row))
     .sort((a, b) => b.score - a.score)
-    .slice(0, 40);
+    .slice(0, 50);
 }
 
 function formatTimeToExpiry(eventEnd: string): string {
@@ -342,6 +537,7 @@ function formatTimeToExpiry(eventEnd: string): string {
   if (!Number.isFinite(ms)) return 'Unknown';
   const hours = Math.round(ms / (1000 * 60 * 60));
   if (hours < 0) return 'Expired';
+  if (hours < 1) return `${Math.round(ms / 60000)}m`;
   if (hours < 24) return `${hours}h`;
   return `${Math.round(hours / 24)}d`;
 }

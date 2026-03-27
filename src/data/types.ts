@@ -10,6 +10,15 @@ export interface Market {
   settlementRules: string;
   liquidityScore: number;
   market_url: string;
+  volume24h: number;
+  lastTradeTime: string;
+  lastUpdated: string;
+  yesPrice: number;
+  noPrice: number;
+  impliedProbYes: number;
+  impliedProbNo: number;
+  priceChange1h: number;
+  priceChange24h: number;
 }
 
 export interface QuoteSnapshot {
@@ -38,6 +47,8 @@ export interface TradePrint {
   size: number;
 }
 
+export type SignalDirection = 'YES' | 'NO' | 'PASS';
+
 export interface Signal {
   id: string;
   marketId: string;
@@ -46,10 +57,19 @@ export interface Signal {
   expectedNetEdge: number;
   confidence: number;
   action: 'paper_buy_yes' | 'paper_buy_no' | 'wait';
+  direction: SignalDirection;
   rationale: string;
+  thesis: string;
   momentum: number;
   imbalance: number;
   timeToExpiry: string;
+  entryZone: [number, number];
+  targetPrice: number;
+  invalidationPrice: number;
+  riskReward: number;
+  catalystStrength: number;
+  sentimentBias: 'bullish' | 'bearish' | 'neutral';
+  smartMoneyFlag: boolean;
 }
 
 export interface JournalTrade {
@@ -69,6 +89,9 @@ export interface JournalTrade {
   timestamp: string;
   status: 'open' | 'closed' | 'stopped';
   category: string;
+  side: SignalDirection;
+  confidenceAtEntry: number;
+  signalScoreAtEntry: number;
 }
 
 export interface BacktestRun {
@@ -104,3 +127,20 @@ export interface Strategy {
   enabled: boolean;
   thresholds: Record<string, number>;
 }
+
+export type FreshnessStatus = 'LIVE' | 'DELAYED' | 'STALE' | 'DISCONNECTED';
+
+export const getFreshnessStatus = (lastUpdated: string | undefined, thresholdMs = 120_000): FreshnessStatus => {
+  if (!lastUpdated) return 'DISCONNECTED';
+  const age = Date.now() - new Date(lastUpdated).getTime();
+  if (age < thresholdMs) return 'LIVE';
+  if (age < thresholdMs * 5) return 'DELAYED';
+  return 'STALE';
+};
+
+export const freshnessColors: Record<FreshnessStatus, string> = {
+  LIVE: 'bg-profit/20 text-profit',
+  DELAYED: 'bg-warning/20 text-warning',
+  STALE: 'bg-loss/20 text-loss',
+  DISCONNECTED: 'bg-muted text-muted-foreground',
+};
