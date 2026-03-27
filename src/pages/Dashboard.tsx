@@ -38,7 +38,7 @@ const timeToHours = (value: string) => {
 };
 
 const Dashboard = () => {
-  const { data, isLoading, isError, error } = useMarketScanner();
+  const { data, isLoading, isFetching, isError, error, refetch } = useMarketScanner();
   const [sortKey, setSortKey] = useState<SortKey>('score');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [filterDirection, setFilterDirection] = useState<FilterDirection>('ALL');
@@ -101,7 +101,21 @@ const Dashboard = () => {
     return active.reduce((sum, sig) => sum + sig.expectedNetEdge, 0) / Math.max(1, active.length);
   }, [actionableSignals]);
 
-  if (isLoading) {
+  if (!data && !isLoading && !isFetching) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <Zap className="w-8 h-8 text-primary mx-auto" />
+          <p className="text-sm text-muted-foreground">Click below to scan live markets on demand</p>
+          <button onClick={() => refetch()} className="px-4 py-2 bg-primary text-primary-foreground rounded-md font-semibold text-sm hover:opacity-90 transition">
+            Scan Now
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoading || isFetching) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center space-y-2">
@@ -150,6 +164,9 @@ const Dashboard = () => {
           <Zap className="w-5 h-5 text-primary" /> Live Scanner
         </h1>
         <div className="flex items-center gap-3">
+          <button onClick={() => refetch()} disabled={isFetching} className="px-3 py-1 bg-primary text-primary-foreground rounded text-xs font-bold hover:opacity-90 transition disabled:opacity-50">
+            {isFetching ? 'Scanning…' : '⚡ Scan Now'}
+          </button>
           <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${freshnessColors[freshness]}`}>{freshness}</span>
           <span className="text-[10px] text-muted-foreground">
             {new Date(data!.fetchedAt).toLocaleTimeString()} · {data?.source === 'demo' ? 'Demo' : data?.source === 'integrations-api' ? 'Live API' : 'Feed'}

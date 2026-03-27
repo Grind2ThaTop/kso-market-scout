@@ -185,7 +185,7 @@ const AutoTradePage = () => {
       return data as Position[];
     },
     enabled: !!session,
-    refetchInterval: 10000,
+    refetchOnWindowFocus: false,
   });
 
   const { data: orders = [] } = useQuery({
@@ -200,7 +200,7 @@ const AutoTradePage = () => {
       return data as OrderHistoryRow[];
     },
     enabled: !!session,
-    refetchInterval: 10000,
+    refetchOnWindowFocus: false,
   });
 
   const { data: dailyPnl } = useQuery({
@@ -215,7 +215,7 @@ const AutoTradePage = () => {
       return data;
     },
     enabled: !!session,
-    refetchInterval: 10000,
+    refetchOnWindowFocus: false,
   });
 
   useEffect(() => {
