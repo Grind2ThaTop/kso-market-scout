@@ -59,6 +59,7 @@ const inferQuote = (row: Record<string, unknown>) => {
 
 export interface ScanSnapshot {
   fetchedAt: string;
+  source: 'live-api' | 'integrations-api' | 'demo';
   markets: Market[];
   quotes: QuoteSnapshot[];
   signals: Signal[];
@@ -67,6 +68,7 @@ export interface ScanSnapshot {
 export interface ScannerConfig {
   apiUrl?: string;
   apiKey?: string;
+  integrationsApiBase?: string;
   pollIntervalMs: number;
   profile: TradingProfile;
 }
@@ -74,6 +76,7 @@ export interface ScannerConfig {
 export const scannerConfig: ScannerConfig = {
   apiUrl: import.meta.env.VITE_MARKET_DATA_URL,
   apiKey: import.meta.env.VITE_MARKET_DATA_API_KEY,
+  integrationsApiBase: import.meta.env.VITE_INTEGRATIONS_API_BASE,
   pollIntervalMs: Number(import.meta.env.VITE_MARKET_DATA_POLL_MS ?? DEFAULT_POLL_MS),
   profile: {
     dailyTarget: Number(import.meta.env.VITE_DAILY_TARGET_USD ?? 500),
@@ -90,76 +93,115 @@ export const scannerConfig: ScannerConfig = {
 
 export class MissingDataSourceError extends Error {
   constructor() {
-    super('Live market data source is not configured. Set VITE_MARKET_DATA_URL.');
+    super('No market data source is available. Set VITE_MARKET_DATA_URL or run integrations API.');
   }
 }
 
-export async function fetchScanSnapshot(): Promise<ScanSnapshot> {
-  if (!scannerConfig.apiUrl) {
-    // Fall back to demo data when no live API is configured
-    const { DEMO_MARKETS, DEMO_QUOTES, DEMO_SIGNALS } = await import('./demoData');
-    return {
-      fetchedAt: new Date().toISOString(),
-      markets: DEMO_MARKETS,
-      quotes: DEMO_QUOTES,
-      signals: DEMO_SIGNALS,
-    };
+const resolveIntegrationsBase = () => scannerConfig.integrationsApiBase?.trim() || '';
+
+const fetchIntegrationProviderMarkets = async (provider: 'kalshi' | 'polymarket') => {
+  const base = resolveIntegrationsBase();
+  const url = `${base}/api/prediction-markets/markets?provider=${provider}`;
+  const response = await fetch(url, { headers: { Accept: 'application/json' } });
+  if (!response.ok) throw new Error(`Integrations market request failed (${provider}, ${response.status}).`);
+  return response.json();
+};
+
+const toRecord = (value: unknown): Record<string, unknown> => (
+  value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
+);
+
+const pickFirstString = (...values: unknown[]): string => {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
   }
+  return '';
+};
 
-  const headers: HeadersInit = { Accept: 'application/json' };
-  if (scannerConfig.apiKey) {
-    headers.Authorization = `Bearer ${scannerConfig.apiKey}`;
-    headers['X-API-Key'] = scannerConfig.apiKey;
+const pickFirstNumber = (...values: unknown[]): number | null => {
+  for (const value of values) {
+    const parsed = toNumber(value);
+    if (parsed != null) return parsed;
   }
+  return null;
+};
 
-  const response = await fetch(scannerConfig.apiUrl, { headers });
-  if (!response.ok) {
-    throw new Error(`Live market API request failed (${response.status}).`);
-  }
+const extractSourceRow = (row: Record<string, unknown>): Record<string, unknown> => {
+  const raw = row.raw;
+  return raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : row;
+};
 
-  const payload = await response.json();
-  const rows = parseArray(payload);
-  const fetchedAt = new Date().toISOString();
+const resolveMarketUrl = (
+  row: Record<string, unknown>,
+  sourceRow: Record<string, unknown>,
+  platform: Market['platform'],
+  marketSlug: string,
+  eventSlug: string,
+): string => {
+  const directUrl = pickFirstString(
+    row.market_url,
+    row.marketUrl,
+    row.url,
+    row.permalink,
+    sourceRow.market_url,
+    sourceRow.marketUrl,
+    sourceRow.url,
+    sourceRow.permalink,
+  );
+  if (directUrl.startsWith('http://') || directUrl.startsWith('https://')) return directUrl;
+  return buildMarketUrl({ platform, marketSlug, eventSlug }) || '';
+};
 
+const normalizeRows = (rows: unknown[], fetchedAt: string) => {
   const normalized = rows
     .map((item): { market: Market; quote: QuoteSnapshot } | null => {
       if (!item || typeof item !== 'object') return null;
       const row = item as Record<string, unknown>;
-      const id =
-        String(row.id ?? row.marketId ?? row.conditionId ?? row.ticker ?? row.slug ?? '').trim();
-      const title = String(row.title ?? row.question ?? row.name ?? '').trim();
+      const sourceRow = extractSourceRow(row);
+
+      const id = pickFirstString(row.id, row.marketId, row.conditionId, row.ticker, row.slug, sourceRow.id, sourceRow.ticker, sourceRow.conditionId);
+      const title = pickFirstString(row.title, row.question, row.name, sourceRow.title, sourceRow.question, sourceRow.name);
       if (!id || !title) return null;
 
-      const quote = inferQuote(row);
+      const quote = inferQuote({ ...sourceRow, ...row });
       if (!quote) return null;
 
-      const eventEnd = String(
-        row.eventEnd ?? row.endDate ?? row.end_date ?? row.closeTime ?? row.expiration ?? fetchedAt,
+      const eventEnd = pickFirstString(
+        row.eventEnd, row.endDate, row.end_date, row.closeTime, row.expiration,
+        sourceRow.eventEnd, sourceRow.endDate, sourceRow.end_date, sourceRow.closeTime, sourceRow.expiration,
+        fetchedAt,
       );
-      const volume = toNumber(row.volume24h) ?? toNumber(row.volume) ?? toNumber(row.liquidity) ?? 0;
+      const volume = pickFirstNumber(
+        row.volume24h, row.volume, row.liquidity,
+        sourceRow.volume24h, sourceRow.volume, sourceRow.liquidity, sourceRow.volume_num,
+        0,
+      ) ?? 0;
       const liquidityScore = Math.max(1, Math.min(99, Math.round(Math.log10(volume + 10) * 30)));
 
-      const platform = (String(row.platform ?? 'polymarket').toLowerCase() as Market['platform']) || 'polymarket';
-      const marketSlug = String(row.marketSlug ?? row.slug ?? row.conditionSlug ?? '');
-      const eventSlug = String(row.eventSlug ?? row.event ?? '');
+      const platform = (pickFirstString(row.platform, row.provider, sourceRow.platform, sourceRow.provider, 'polymarket').toLowerCase() as Market['platform']) || 'polymarket';
+      const marketSlug = pickFirstString(
+        row.marketSlug, row.slug, row.conditionSlug, row.ticker,
+        sourceRow.marketSlug, sourceRow.slug, sourceRow.conditionSlug, sourceRow.ticker,
+      );
+      const eventSlug = pickFirstString(row.eventSlug, row.event, row.series_ticker, sourceRow.eventSlug, sourceRow.event, sourceRow.event_ticker, sourceRow.series_ticker);
 
       const market: Market = {
         id,
-        ticker: String(row.ticker ?? row.slug ?? id).toUpperCase(),
+        ticker: pickFirstString(row.ticker, row.slug, sourceRow.ticker, sourceRow.slug, id).toUpperCase(),
         title,
         platform,
         marketSlug,
         eventSlug,
-        category: normalizeCategory(row.category ?? row.group ?? row.tag),
+        category: normalizeCategory(row.category ?? row.group ?? row.tag ?? sourceRow.category ?? sourceRow.group ?? sourceRow.tag),
         eventEnd,
-        settlementRules: String(row.rules ?? row.description ?? 'See exchange rules.'),
+        settlementRules: pickFirstString(row.rules, row.description, sourceRow.rules, sourceRow.description, 'See exchange rules.'),
         liquidityScore,
-        market_url: buildMarketUrl({ platform, marketSlug, eventSlug }) || '',
+        market_url: resolveMarketUrl(row, sourceRow, platform, marketSlug, eventSlug),
       };
 
       const normalizedQuote: QuoteSnapshot = {
         marketId: id,
-        timestamp: String(row.timestamp ?? row.updatedAt ?? row.lastUpdated ?? fetchedAt),
+        timestamp: pickFirstString(row.timestamp, row.updatedAt, row.lastUpdated, sourceRow.timestamp, sourceRow.updatedAt, sourceRow.lastUpdated, fetchedAt),
         bestYesBid: quote.bestYesBid,
         bestYesAsk: quote.bestYesAsk,
         bestNoBid: +(1 - quote.bestYesAsk).toFixed(4),
@@ -171,11 +213,52 @@ export async function fetchScanSnapshot(): Promise<ScanSnapshot> {
     })
     .filter((row): row is { market: Market; quote: QuoteSnapshot } => Boolean(row));
 
-  const markets = normalized.map((row) => row.market);
-  const quotes = normalized.map((row) => row.quote);
-  const signals = buildSignals(markets, quotes);
+  return {
+    markets: normalized.map((row) => row.market),
+    quotes: normalized.map((row) => row.quote),
+  };
+};
 
-  return { fetchedAt, markets, quotes, signals };
+export async function fetchScanSnapshot(): Promise<ScanSnapshot> {
+  const fetchedAt = new Date().toISOString();
+  try {
+    if (scannerConfig.apiUrl) {
+      const headers: HeadersInit = { Accept: 'application/json' };
+      if (scannerConfig.apiKey) {
+        headers.Authorization = `Bearer ${scannerConfig.apiKey}`;
+        headers['X-API-Key'] = scannerConfig.apiKey;
+      }
+      const response = await fetch(scannerConfig.apiUrl, { headers });
+      if (!response.ok) {
+        throw new Error(`Live market API request failed (${response.status}).`);
+      }
+      const payload = await response.json();
+      const { markets, quotes } = normalizeRows(parseArray(payload), fetchedAt);
+      const signals = buildSignals(markets, quotes);
+      return { fetchedAt, source: 'live-api', markets, quotes, signals };
+    }
+
+    const [kalshiPayload, polymarketPayload] = await Promise.all([
+      fetchIntegrationProviderMarkets('kalshi'),
+      fetchIntegrationProviderMarkets('polymarket'),
+    ]);
+    const mergedRows = [...parseArray(kalshiPayload), ...parseArray(polymarketPayload)];
+    if (mergedRows.length === 0) throw new MissingDataSourceError();
+
+    const { markets, quotes } = normalizeRows(mergedRows, fetchedAt);
+    const signals = buildSignals(markets, quotes);
+    return { fetchedAt, source: 'integrations-api', markets, quotes, signals };
+  } catch {
+    // Fall back to demo data when live endpoints are unavailable
+    const { DEMO_MARKETS, DEMO_QUOTES, DEMO_SIGNALS } = await import('./demoData');
+    return {
+      fetchedAt,
+      source: 'demo',
+      markets: DEMO_MARKETS,
+      quotes: DEMO_QUOTES,
+      signals: DEMO_SIGNALS,
+    };
+  }
 }
 
 function buildSignals(markets: Market[], quotes: QuoteSnapshot[]): Signal[] {
