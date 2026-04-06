@@ -647,7 +647,7 @@ const AutoTradePage = () => {
             </div>
           </div>
 
-          <Button className="w-full" onClick={() => saveMutation.mutate(localSettings)} disabled={saveMutation.isPending}>
+          <Button className="w-full" onClick={() => saveMutation.mutate(localSettings, { onSuccess: () => toast.success('Settings saved') })} disabled={saveMutation.isPending}>
             {saveMutation.isPending ? 'Saving…' : 'Save Settings'}
           </Button>
         </CardContent>
