@@ -276,7 +276,6 @@ const Dashboard = () => {
                       <Link to={`/market/${sig.marketId}`} className="text-accent hover:underline font-medium block truncate max-w-[200px]" title={mkt.title}>
                         {mkt.title}
                       </Link>
-                      <span className="text-[10px] text-muted-foreground font-mono">{mkt.ticker}</span>
                     </td>
                     <td className="px-3 py-2">
                       <span className="px-1.5 py-0.5 bg-surface-2 rounded uppercase text-[10px]">{mkt.platform === 'kalshi' ? 'KAL' : 'PM'}</span>
