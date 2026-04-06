@@ -224,7 +224,7 @@ const Dashboard = () => {
         ))}
         <span className="text-muted-foreground">|</span>
         <div className="flex items-center gap-1 text-xs text-muted-foreground">Category:</div>
-        {(['all', 'sports', 'politics', 'economics', 'weather', 'culture'] as FilterCategory[]).map(c => (
+        {(['all', 'sports', 'politics', 'economics', 'crypto', 'tech', 'finance', 'weather', 'entertainment', 'science', 'health', 'legal', 'other'] as FilterCategory[]).map(c => (
           <button key={c} onClick={() => setFilterCategory(c)}
             className={`px-2 py-1 rounded text-[10px] capitalize transition-colors ${filterCategory === c ? 'bg-primary/20 text-primary font-bold' : 'bg-surface-2 text-muted-foreground hover:text-foreground'}`}>{c}</button>
         ))}
