@@ -1,5 +1,5 @@
 import { useMemo, useState, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { TrendingUp, TrendingDown, Target, AlertTriangle, DollarSign, Activity, WifiOff, ArrowUpRight, ArrowDownRight, MinusCircle, Zap, Clock, Filter } from 'lucide-react';
 import { useMarketScanner } from '@/hooks/useMarketScanner';
 import { scannerConfig } from '@/data/liveApi';
