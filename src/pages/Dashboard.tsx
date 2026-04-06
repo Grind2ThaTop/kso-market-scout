@@ -211,23 +211,23 @@ const Dashboard = () => {
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+      <div className="flex items-center gap-3 overflow-x-auto scrollbar-thin pb-1">
+        <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
           <Filter className="w-3.5 h-3.5" />
           <span>Direction:</span>
         </div>
         {(['ALL', 'YES', 'NO'] as FilterDirection[]).map(d => (
           <button key={d} onClick={() => setFilterDirection(d)}
-            className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-colors ${filterDirection === d
+            className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-colors shrink-0 ${filterDirection === d
               ? d === 'YES' ? 'bg-profit/20 text-profit' : d === 'NO' ? 'bg-loss/20 text-loss' : 'bg-primary/20 text-primary'
               : 'bg-surface-2 text-muted-foreground hover:text-foreground'
             }`}>{d}</button>
         ))}
-        <span className="text-muted-foreground">|</span>
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">Category:</div>
+        <span className="text-muted-foreground shrink-0">|</span>
+        <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">Category:</div>
         {(['all', 'sports', 'politics', 'economics', 'crypto', 'tech', 'finance', 'weather', 'entertainment', 'science', 'health', 'legal', 'other'] as FilterCategory[]).map(c => (
           <button key={c} onClick={() => setFilterCategory(c)}
-            className={`px-2 py-1 rounded text-[10px] capitalize transition-colors ${filterCategory === c ? 'bg-primary/20 text-primary font-bold' : 'bg-surface-2 text-muted-foreground hover:text-foreground'}`}>{c}</button>
+            className={`px-2 py-1 rounded text-[10px] capitalize transition-colors shrink-0 ${filterCategory === c ? 'bg-primary/20 text-primary font-bold' : 'bg-surface-2 text-muted-foreground hover:text-foreground'}`}>{c}</button>
         ))}
       </div>
 
