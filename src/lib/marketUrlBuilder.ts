@@ -12,8 +12,8 @@ const buildPolymarketUrl = (market: Pick<Market, 'marketSlug'>): string | null =
 };
 
 const buildKalshiUrl = (market: Pick<Market, 'eventSlug' | 'marketSlug'>): string | null => {
-  const eventSlug = market.eventSlug?.trim();
-  const marketSlug = market.marketSlug?.trim();
+  const eventSlug = market.eventSlug?.trim()?.toLowerCase();
+  const marketSlug = market.marketSlug?.trim()?.toLowerCase();
   // Kalshi format: /markets/event-ticker/market-ticker or just /markets/event-ticker
   if (eventSlug && marketSlug) return `https://kalshi.com/markets/${eventSlug}/${marketSlug}`;
   if (eventSlug) return `https://kalshi.com/markets/${eventSlug}`;
