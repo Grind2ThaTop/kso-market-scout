@@ -99,9 +99,11 @@ const parseDollars = (v: any) => Number(String(v ?? "0").replace(/[^0-9.\-]/g, "
 async function fetchKalshiMarkets() {
   try {
     const allMarkets: any[] = [];
+
+    // 1) Generic paginated fetch for broad coverage
     let cursor = "";
     let pages = 0;
-    const MAX_PAGES = 10; // up to 1000 events to reach short-term ones
+    const MAX_PAGES = 5;
 
     while (pages < MAX_PAGES) {
       const cursorParam = cursor ? `&cursor=${cursor}` : "";
@@ -109,30 +111,64 @@ async function fetchKalshiMarkets() {
         `${KALSHI_BASE}/events?limit=100&status=open&with_nested_markets=true${cursorParam}`,
         { headers: { "Content-Type": "application/json", "Accept": "application/json" } }
       );
-      if (!res.ok) {
-        console.error(`Kalshi events API returned ${res.status}`);
-        break;
-      }
+      if (!res.ok) break;
       const data = await res.json();
       const events = data.events ?? [];
       if (events.length === 0) break;
-
       for (const event of events) {
-        const ms = event.markets ?? [];
-        for (const m of ms) {
+        for (const m of event.markets ?? []) {
           m._eventTitle = event.title;
           m._eventCategory = event.category;
           m._seriesTicker = event.series_ticker;
         }
-        allMarkets.push(...ms);
+        allMarkets.push(...(event.markets ?? []));
       }
-
       cursor = data.cursor ?? "";
       if (!cursor) break;
       pages++;
     }
 
-    console.log(`[scan] Kalshi raw markets from events: ${allMarkets.length} (${pages + 1} pages)`);
+    console.log(`[scan] Kalshi generic fetch: ${allMarkets.length} markets (${pages + 1} pages)`);
+
+    // 2) Targeted sports series fetch for daily game-level markets
+    const SPORTS_SERIES = [
+      "KXNBAGAME", "KXMLBGAME", "KXNFLGAME", "KXNHLGAME",
+      "KXEPLGAME", "KXEPLSPREAD", "KXEPLTOTAL",
+      "KXMLSGAME", "KXUFCMOF", "KXUFCDISTANCE",
+      "KXWTAMATCH", "KXATPMATCH",
+      "KXNCAAFGAME", "KXNCAAMBGAME",
+      "KXFACUPSPREAD", "KXEUROLEAGUEGAME",
+    ];
+
+    const sportsFetches = SPORTS_SERIES.map(async (series) => {
+      try {
+        const res = await fetch(
+          `${KALSHI_BASE}/events?limit=100&status=open&with_nested_markets=true&series_ticker=${series}`,
+          { headers: { "Accept": "application/json" } }
+        );
+        if (!res.ok) return [];
+        const data = await res.json();
+        const events = data.events ?? [];
+        const markets: any[] = [];
+        for (const event of events) {
+          for (const m of event.markets ?? []) {
+            m._eventTitle = event.title;
+            m._eventCategory = event.category ?? "Sports";
+            m._seriesTicker = event.series_ticker;
+          }
+          markets.push(...(event.markets ?? []));
+        }
+        return markets;
+      } catch { return []; }
+    });
+
+    const sportsResults = await Promise.all(sportsFetches);
+    let sportsCount = 0;
+    for (const batch of sportsResults) {
+      sportsCount += batch.length;
+      allMarkets.push(...batch);
+    }
+    console.log(`[scan] Kalshi sports series fetch: ${sportsCount} markets`);
 
     const seen = new Set<string>();
     return allMarkets.filter((m: any) => {
