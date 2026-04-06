@@ -12,7 +12,7 @@ const fmtPct = (n: number) => `${n.toFixed(1)}%`;
 
 type SortKey = 'market' | 'platform' | 'direction' | 'yesPrice' | 'spread' | 'score' | 'confidence' | 'time' | 'volume' | 'rr';
 type FilterDirection = 'ALL' | SignalDirection;
-type FilterCategory = 'all' | 'sports' | 'politics' | 'economics' | 'weather' | 'culture';
+type FilterCategory = 'all' | 'sports' | 'politics' | 'economics' | 'weather' | 'culture' | 'crypto' | 'tech' | 'science' | 'entertainment' | 'finance' | 'health' | 'legal' | 'other';
 
 const directionIcon = (d: SignalDirection) => {
   if (d === 'YES') return <ArrowUpRight className="w-3.5 h-3.5" />;
@@ -224,7 +224,7 @@ const Dashboard = () => {
         ))}
         <span className="text-muted-foreground">|</span>
         <div className="flex items-center gap-1 text-xs text-muted-foreground">Category:</div>
-        {(['all', 'sports', 'politics', 'economics', 'weather', 'culture'] as FilterCategory[]).map(c => (
+        {(['all', 'sports', 'politics', 'economics', 'crypto', 'tech', 'finance', 'weather', 'entertainment', 'science', 'health', 'legal', 'other'] as FilterCategory[]).map(c => (
           <button key={c} onClick={() => setFilterCategory(c)}
             className={`px-2 py-1 rounded text-[10px] capitalize transition-colors ${filterCategory === c ? 'bg-primary/20 text-primary font-bold' : 'bg-surface-2 text-muted-foreground hover:text-foreground'}`}>{c}</button>
         ))}
