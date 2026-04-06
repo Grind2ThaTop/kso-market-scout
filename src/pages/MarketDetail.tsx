@@ -55,14 +55,12 @@ const MarketDetail = () => {
   };
 
   const cleanScrapedContent = (raw: string): string => {
-    // Strategy: find the first H1/H2 heading that looks like the market title,
-    // then keep everything from that point. This skips all nav/sidebar junk.
-    const titleWords = market.title.toLowerCase().split(/\s+/).filter(w => w.length > 3).slice(0, 3);
-
     const lines = raw.split('\n');
+
+    // Find start: first H1/H2 matching title, or "Market Rules"/"Resolution"
+    const titleWords = market.title.toLowerCase().split(/\s+/).filter(w => w.length > 3).slice(0, 3);
     let startIdx = -1;
 
-    // Find the line with the market's actual heading
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim().toLowerCase();
       if (line.startsWith('#')) {
@@ -74,22 +72,9 @@ const MarketDetail = () => {
       }
     }
 
-    // If no heading match found, try to find "Market Rules" or "Resolution" section
     if (startIdx === -1) {
       for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim().toLowerCase();
         if (/^#+\s*(market\s*rules|resolution|description|about)/i.test(lines[i].trim())) {
-          startIdx = i;
-          break;
-        }
-      }
-    }
-
-    // Fallback: skip everything before the first substantial paragraph (>80 chars, no links)
-    if (startIdx === -1) {
-      for (let i = 0; i < lines.length; i++) {
-        const t = lines[i].trim();
-        if (t.length > 80 && !t.startsWith('[') && !t.startsWith('!') && !t.includes('polymarket.com/sports')) {
           startIdx = i;
           break;
         }
@@ -98,15 +83,35 @@ const MarketDetail = () => {
 
     if (startIdx === -1) return 'Could not extract meaningful market content. Try visiting the exchange page directly.';
 
-    const relevant = lines.slice(startIdx).join('\n');
+    // Find end: cut at "People are also trading", "Ideas", "Activity", "Sign up", trade widget junk
+    const stopPatterns = [
+      /^#+\s*(people are also|ideas|activity|related markets)/i,
+      /sign up to trade/i,
+      /^##\s*buy\s+(yes|no)/i,
+      /twitter widget/i,
+      /show more/i,
+    ];
 
-    // Clean up remaining nav junk that might appear after the content
+    let endIdx = lines.length;
+    for (let i = startIdx + 1; i < lines.length; i++) {
+      const t = lines[i].trim();
+      if (stopPatterns.some(p => p.test(t))) {
+        endIdx = i;
+        break;
+      }
+    }
+
+    const relevant = lines.slice(startIdx, endIdx).join('\n');
+
     const cleaned = relevant
-      .replace(/\[!\[.*?\]\(.*?\)\]/g, '')                    // remove image links
-      .replace(/\[([^\]]*)\]\(https?:\/\/polymarket\.com\/sports[^)]*\)/g, '')  // remove sports nav links
-      .replace(/\[([^\]]*)\]\(https?:\/\/kalshi\.com\/markets[^)]*\)/g, '')     // remove kalshi nav links
-      .replace(/^\s*All Sports\s*$/gm, '')
-      .replace(/\n{3,}/g, '\n\n')                             // collapse excessive newlines
+      .replace(/\[!\[.*?\]\(.*?\)\]/g, '')
+      .replace(/!\[.*?\]\(.*?\)/g, '')
+      .replace(/\[([^\]]*)\]\(https?:\/\/[^)]*\)/g, '$1')
+      .replace(/^\s*(Browse|Live\d*|Portfolio|Search|Loading more|Pick up to|Earn \d).*$/gm, '')
+      .replace(/^(Yes|No)\d+¢$/gm, '')
+      .replace(/^(Buy|Sell|Dollars)$/gm, '')
+      .replace(/^Amount$/gm, '')
+      .replace(/\n{3,}/g, '\n\n')
       .trim();
 
     return cleaned || 'No meaningful content extracted.';
