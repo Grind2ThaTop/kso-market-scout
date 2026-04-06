@@ -360,7 +360,9 @@ const normalizeRows = (rows: unknown[], fetchedAt: string) => {
         marketSlug,
         eventSlug,
         seriesSlug,
-        category: normalizeCategory(row.category ?? row.group ?? row.tag ?? sourceRow.category ?? sourceRow.group ?? sourceRow.tag),
+        category: normalizeCategory(
+          `${row.category ?? row.group ?? row.tag ?? sourceRow.category ?? sourceRow.group ?? sourceRow.tag ?? ''} ${title}`
+        ),
         eventEnd: eventEnd || fetchedAt,
         settlementRules: pickFirstString(row.rules, row.description, sourceRow.rules, sourceRow.description, row.rules_primary, sourceRow.rules_primary, 'See exchange rules.'),
         liquidityScore,
