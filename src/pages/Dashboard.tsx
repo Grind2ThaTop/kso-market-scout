@@ -402,7 +402,7 @@ const Dashboard = () => {
                     if (!mkt) return null;
                     const entry = sig.entryZone[0];
                     return (
-                      <tr key={sig.id} className="border-b border-border/50 hover:bg-surface-2">
+                      <tr key={sig.id} className="border-b border-border/50 hover:bg-surface-2 cursor-pointer" onClick={() => window.location.href = `/market/${mkt.id}`}>
                         <td className="px-3 py-2">
                           <span className={`font-bold ${directionColor(sig.direction)}`}>{sig.direction}</span>
                         </td>
