@@ -782,7 +782,6 @@ const AutoTradePage = () => {
                       <td className="px-2 py-1.5"><Badge variant="outline" className="text-[9px]">{o.status}</Badge></td>
                     </tr>);
                   })}
-                  ))}
                 </tbody>
               </table>
             </div>
