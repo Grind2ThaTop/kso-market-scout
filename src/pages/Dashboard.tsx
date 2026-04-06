@@ -38,6 +38,7 @@ const timeToHours = (value: string) => {
 };
 
 const Dashboard = () => {
+  const navigate = useNavigate();
   const { data, isLoading, isFetching, isError, error, refetch } = useMarketScanner();
   const [sortKey, setSortKey] = useState<SortKey>('score');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
