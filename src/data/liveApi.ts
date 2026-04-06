@@ -312,7 +312,8 @@ const normalizeRows = (rows: unknown[], fetchedAt: string) => {
 
       const volume24h = pickFirstNumber(
         row.volume24hr, sourceRow.volume24hr, row.volume_24h, sourceRow.volume_24h,
-        row.volume24h, sourceRow.volume24h,
+        row.volume24h, sourceRow.volume24h, row.volume, sourceRow.volume,
+        row.volumeNum, sourceRow.volumeNum,
       ) ?? 0;
       const totalVol = pickFirstNumber(
         row.volumeNum, sourceRow.volumeNum, row.volume, sourceRow.volume,
@@ -337,7 +338,8 @@ const normalizeRows = (rows: unknown[], fetchedAt: string) => {
         sourceRow.marketSlug, sourceRow.slug, sourceRow.conditionSlug, sourceRow.ticker,
       );
       const eventSlug = pickFirstString(
-        row.eventSlug, row.event, row.series_ticker, sourceRow.eventSlug, sourceRow.event, sourceRow.event_ticker, sourceRow.series_ticker,
+        row.eventSlug, row.event, row.event_ticker, row.series_ticker,
+        sourceRow.eventSlug, sourceRow.event, sourceRow.event_ticker, sourceRow.series_ticker,
       );
 
       const yesPrice = (quote.bestYesBid + quote.bestYesAsk) / 2;
