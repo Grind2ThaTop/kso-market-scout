@@ -166,25 +166,39 @@ const StrategyLab = () => {
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-border text-muted-foreground">
-                {['Signal', 'Market', 'Score', 'Conf', 'Entry', 'Target', 'R:R', 'Exp'].map(h => (
+                {['Signal', 'Market', 'Score', 'Conf', 'Entry', 'Target', 'R:R', 'Exp', 'Trade'].map(h => (
                   <th key={h} className="px-3 py-2 text-left font-medium">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {strategyMatches.map(({ signal: s, market: m }) => (
-                <tr key={s.id} className="border-b border-border/40 hover:bg-surface-2">
+                <tr key={s.id} className="border-b border-border/40 hover:bg-surface-2 transition-colors">
                   <td className={`px-3 py-2 font-bold ${s.direction === 'YES' ? 'text-profit' : 'text-loss'}`}>
                     {s.direction === 'YES' ? <TrendingUp className="w-3.5 h-3.5 inline mr-1" /> : <TrendingDown className="w-3.5 h-3.5 inline mr-1" />}
                     {s.direction}
                   </td>
-                  <td className="px-3 py-2 truncate max-w-[200px]">{m?.title}</td>
+                  <td className="px-3 py-2">
+                    <Link to={`/market/${m?.id}`} className="text-accent hover:underline font-medium block truncate max-w-[200px]" title={m?.title}>
+                      {m?.title}
+                    </Link>
+                  </td>
                   <td className="px-3 py-2 font-mono">{s.score}</td>
                   <td className="px-3 py-2">{s.confidence}%</td>
                   <td className="px-3 py-2 font-mono">{fmtC(s.entryZone[0])}-{fmtC(s.entryZone[1])}</td>
                   <td className="px-3 py-2 font-mono text-profit">{fmtC(s.targetPrice)}</td>
                   <td className="px-3 py-2 font-mono">{s.riskReward.toFixed(1)}</td>
                   <td className="px-3 py-2 text-muted-foreground">{s.timeToExpiry}</td>
+                  <td className="px-3 py-2">
+                    {m?.market_url ? (
+                      <div className="flex items-center gap-1">
+                        <a href={buildOutcomeTradeUrl(m, 'yes')} target="_blank" rel="noreferrer" className="px-2 py-0.5 rounded text-[10px] font-bold bg-profit/15 text-profit hover:bg-profit/25">YES</a>
+                        <a href={buildOutcomeTradeUrl(m, 'no')} target="_blank" rel="noreferrer" className="px-2 py-0.5 rounded text-[10px] font-bold bg-loss/15 text-loss hover:bg-loss/25">NO</a>
+                      </div>
+                    ) : (
+                      <span className="text-[10px] text-muted-foreground flex items-center gap-1"><ExternalLink className="w-3 h-3" /> N/A</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
