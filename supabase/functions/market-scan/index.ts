@@ -96,6 +96,7 @@ async function fetchKalshiMarkets() {
       for (const m of ms) {
         m._eventTitle = event.title;
         m._eventCategory = event.category;
+        m._seriesTicker = event.series_ticker;
         allMarkets.push(m);
       }
     }
