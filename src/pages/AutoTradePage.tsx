@@ -542,8 +542,6 @@ const AutoTradePage = () => {
           </div>
         </CardContent>
       </Card>
-        </Card>
-      )}
 
       {/* Exchange Accounts */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
