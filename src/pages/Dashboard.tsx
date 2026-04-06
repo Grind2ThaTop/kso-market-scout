@@ -12,7 +12,7 @@ const fmtPct = (n: number) => `${n.toFixed(1)}%`;
 
 type SortKey = 'market' | 'platform' | 'direction' | 'yesPrice' | 'spread' | 'score' | 'confidence' | 'time' | 'volume' | 'rr';
 type FilterDirection = 'ALL' | SignalDirection;
-type FilterCategory = 'all' | 'sports' | 'politics' | 'economics' | 'weather' | 'culture';
+type FilterCategory = 'all' | 'sports' | 'politics' | 'economics' | 'weather' | 'culture' | 'crypto' | 'tech' | 'science' | 'entertainment' | 'finance' | 'health' | 'legal' | 'other';
 
 const directionIcon = (d: SignalDirection) => {
   if (d === 'YES') return <ArrowUpRight className="w-3.5 h-3.5" />;
