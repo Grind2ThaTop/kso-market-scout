@@ -337,6 +337,7 @@ const AutoTradePage = () => {
   });
 
   const openPositions = positions.filter(p => p.status === 'open');
+  const marketTitleMap = new Map(positions.map(p => [p.market_id, p.market_title]));
   const paperPositions = positions.filter(p => p.paper_mode);
   const livePositions = positions.filter(p => !p.paper_mode);
   const paperPnl = paperPositions.reduce((s, p) => s + (p.pnl ?? 0), 0);
@@ -761,7 +762,7 @@ const AutoTradePage = () => {
                   {orders.slice(0, 20).map(o => (
                     <tr key={o.id} className="border-b border-border/30">
                       <td className="px-2 py-1.5 text-muted-foreground">{new Date(o.created_at).toLocaleTimeString()}</td>
-                      <td className="px-2 py-1.5 font-mono truncate max-w-[120px]">{o.market_id}</td>
+                      <td className="px-2 py-1.5 truncate max-w-[200px]">{marketTitleMap.get(o.market_id) || o.market_id}</td>
                       <td className="px-2 py-1.5"><span className={o.side === 'yes' ? 'text-profit' : 'text-loss'}>{o.side.toUpperCase()}</span></td>
                       <td className="px-2 py-1.5 font-mono">{(o.price * 100).toFixed(0)}¢</td>
                       <td className="px-2 py-1.5 font-mono">${o.size.toFixed(2)}</td>
