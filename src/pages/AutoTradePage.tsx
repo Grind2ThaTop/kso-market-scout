@@ -265,7 +265,7 @@ const AutoTradePage = () => {
 
   const saveMutation = useMutation({
     mutationFn: persistSettings,
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['auto-trade-settings'] }); toast.success('Settings saved'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['auto-trade-settings'] }); },
     onError: (err) => toast.error(String(err)),
   });
 
