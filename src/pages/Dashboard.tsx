@@ -239,9 +239,23 @@ const Dashboard = () => {
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-3 overflow-x-auto scrollbar-thin pb-1">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 overflow-x-auto scrollbar-thin pb-1">
+        {/* Exchange */}
         <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
           <Filter className="w-3.5 h-3.5" />
+          <span>Exchange:</span>
+        </div>
+        {(['all', 'kalshi', 'polymarket'] as FilterExchange[]).map(e => (
+          <button key={e} onClick={() => setFilterExchange(e)}
+            className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-colors shrink-0 ${filterExchange === e ? 'bg-primary/20 text-primary' : 'bg-surface-2 text-muted-foreground hover:text-foreground'}`}>
+            {e === 'all' ? 'ALL' : e === 'kalshi' ? 'KAL' : 'PM'}
+          </button>
+        ))}
+
+        <span className="text-muted-foreground shrink-0">|</span>
+
+        {/* Direction */}
+        <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
           <span>Direction:</span>
         </div>
         {(['ALL', 'YES', 'NO'] as FilterDirection[]).map(d => (
@@ -251,7 +265,36 @@ const Dashboard = () => {
               : 'bg-surface-2 text-muted-foreground hover:text-foreground'
             }`}>{d}</button>
         ))}
+
         <span className="text-muted-foreground shrink-0">|</span>
+
+        {/* Volume */}
+        <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
+          <span>Vol:</span>
+        </div>
+        {(['all', '1k', '10k', '100k'] as FilterVolume[]).map(v => (
+          <button key={v} onClick={() => setFilterVolume(v)}
+            className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-colors shrink-0 ${filterVolume === v ? 'bg-primary/20 text-primary' : 'bg-surface-2 text-muted-foreground hover:text-foreground'}`}>
+            {v === 'all' ? 'ALL' : `≥$${v}`}
+          </button>
+        ))}
+
+        <span className="text-muted-foreground shrink-0">|</span>
+
+        {/* Expiry */}
+        <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
+          <span>Exp:</span>
+        </div>
+        {(['all', '1h', '24h', '7d', '30d'] as FilterExpiry[]).map(t => (
+          <button key={t} onClick={() => setFilterExpiry(t)}
+            className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-colors shrink-0 ${filterExpiry === t ? 'bg-primary/20 text-primary' : 'bg-surface-2 text-muted-foreground hover:text-foreground'}`}>
+            {t === 'all' ? 'ALL' : `≤${t}`}
+          </button>
+        ))}
+
+        <span className="text-muted-foreground shrink-0">|</span>
+
+        {/* Category */}
         <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">Category:</div>
         {(['all', 'sports', 'politics', 'economics', 'crypto', 'tech', 'finance', 'weather', 'entertainment', 'science', 'health', 'legal', 'other'] as FilterCategory[]).map(c => (
           <button key={c} onClick={() => setFilterCategory(c)}
