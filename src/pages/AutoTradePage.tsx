@@ -317,7 +317,7 @@ const AutoTradePage = () => {
         available: kalshi?.balance?.available ?? null, total: kalshi?.balance?.total ?? null,
         livePositions: kalshi?.livePositions ?? 0, liveOrders: kalshi?.liveOrders ?? 0,
         lastSynced: new Date().toLocaleTimeString(),
-        error: kalshiError ?? (kalshi?.balance ? null : 'Kalshi: No balance returned.'),
+        error: kalshiError ?? kalshi?.error ?? (kalshi?.balance ? null : 'Kalshi auth failed: incorrect API key signature.'),
       });
       if (poly) {
         const polyBal = poly.balance;
