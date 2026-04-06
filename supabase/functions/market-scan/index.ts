@@ -79,60 +79,80 @@ async function fetchPolymarketMarkets() {
 
 async function fetchKalshiMarkets() {
   try {
-    const res = await fetch(`${KALSHI_BASE}/markets?limit=200&status=open`, {
+    // Use events endpoint with nested markets for better data
+    const res = await fetch(`${KALSHI_BASE}/events?limit=100&status=open&with_nested_markets=true`, {
       headers: { "Content-Type": "application/json", "Accept": "application/json" },
     });
     if (!res.ok) {
-      console.error(`Kalshi markets API returned ${res.status}`);
+      console.error(`Kalshi events API returned ${res.status}`);
       return [];
     }
     const data = await res.json();
-    const markets = data.markets ?? [];
+    const events = data.events ?? [];
+    const allMarkets: any[] = [];
+    for (const event of events) {
+      const ms = event.markets ?? [];
+      for (const m of ms) {
+        m._eventTitle = event.title;
+        m._eventCategory = event.category;
+        allMarkets.push(m);
+      }
+    }
 
-    return markets.filter((m: any) => {
+    // Kalshi v2 uses _dollars and _fp suffixed fields
+    const parseDollars = (v: any) => Number(String(v ?? "0").replace(/[^0-9.\-]/g, "")) || 0;
+
+    return allMarkets.filter((m: any) => {
       const ticker = m.ticker ?? "";
       if (ticker.startsWith("KXMVE")) return false;
-      const yesBid = Number(m.yes_bid ?? 0);
-      const yesAsk = Number(m.yes_ask ?? 0);
+      const yesBid = parseDollars(m.yes_bid_dollars);
+      const yesAsk = parseDollars(m.yes_ask_dollars);
       if (yesBid === 0 && yesAsk === 0) return false;
-      const liq = Number(m.liquidity ?? 0);
-      const vol = Number(m.volume ?? 0);
-      if (liq === 0 && vol === 0) return false;
-      const lastPrice = Number(m.last_price ?? m.yes_bid ?? 0);
-      const normalized = lastPrice > 1 ? lastPrice / 100 : lastPrice;
-      if (normalized >= 0.90 || (normalized > 0 && normalized <= 0.10)) return false;
+      const oi = parseDollars(m.open_interest_fp);
+      const vol = parseDollars(m.volume_fp);
+      // Relax liquidity filter — Kalshi reports liquidity_dollars as 0 for most markets
+      // Use open_interest or volume instead
+      if (oi === 0 && vol === 0) return false;
+      const lastPrice = parseDollars(m.last_price_dollars);
+      if (lastPrice >= 0.90 || (lastPrice > 0 && lastPrice <= 0.10)) return false;
       return true;
     }).map((m: any) => {
-      const yesBid = Number(m.yes_bid ?? 50);
-      const yesAsk = Number(m.yes_ask ?? yesBid + 2);
-      const noBid = Number(m.no_bid ?? 50);
-      const noAsk = Number(m.no_ask ?? noBid + 2);
-      const lastPrice = Number(m.last_price ?? yesBid);
-      const vol24h = Number(m.volume_24h ?? m.volume ?? 0);
-      const liq = Number(m.liquidity ?? m.open_interest ?? 0);
+      const yesBid = parseDollars(m.yes_bid_dollars);
+      const yesAsk = parseDollars(m.yes_ask_dollars);
+      const noBid = parseDollars(m.no_bid_dollars);
+      const noAsk = parseDollars(m.no_ask_dollars);
+      const lastPrice = parseDollars(m.last_price_dollars);
+      const vol = parseDollars(m.volume_fp);
+      const vol24h = parseDollars(m.volume_24h_fp);
+      const oi = parseDollars(m.open_interest_fp);
+      const prevPrice = parseDollars(m.previous_price_dollars);
 
       return {
         id: m.ticker ?? m.id,
         ticker: (m.ticker ?? m.id ?? "").toUpperCase(),
-        title: m.title ?? m.subtitle ?? "Untitled",
+        title: m.title ?? m._eventTitle ?? "Untitled",
         platform: "kalshi",
         marketSlug: m.ticker,
         eventSlug: m.event_ticker ?? m.series_ticker,
-        category: m.category ?? "economics",
+        category: m._eventCategory ?? "economics",
         endDate: m.close_time ?? m.expiration_time,
-        rules: m.rules_primary ?? m.settlement_timer_duration ?? "See Kalshi rules.",
-        lastTradePrice: lastPrice / 100,
-        volume: vol24h,
-        volumeNum: vol24h,
-        liquidity: liq,
-        liquidityNum: liq,
-        bestYesBid: yesBid / 100,
-        bestYesAsk: yesAsk / 100,
-        bestNoBid: noBid / 100,
-        bestNoAsk: noAsk / 100,
-        spread: (yesAsk - yesBid) / 100,
+        rules: m.rules_primary ?? "See Kalshi rules.",
+        lastTradePrice: lastPrice,
+        volume: vol24h || vol,
+        volumeNum: vol24h || vol,
+        liquidity: oi,
+        liquidityNum: oi,
+        bestYesBid: yesBid,
+        bestYesAsk: yesAsk,
+        bestNoBid: noBid,
+        bestNoAsk: noAsk,
+        spread: Math.abs(yesAsk - yesBid),
         oneHourPriceChange: 0,
-        oneDayPriceChange: Number(m.previous_price ? (lastPrice - m.previous_price) / 100 : 0),
+        oneDayPriceChange: prevPrice > 0 ? lastPrice - prevPrice : 0,
+        status: m.status ?? "active",
+        open_interest: oi,
+      };
+    });
         status: m.status ?? "open",
         open_interest: m.open_interest ?? 0,
       };
