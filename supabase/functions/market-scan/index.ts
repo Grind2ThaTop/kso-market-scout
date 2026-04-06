@@ -17,14 +17,21 @@ const KALSHI_PRIVATE_KEY = Deno.env.get("KALSHI_PRIVATE_KEY");
 /* ─── Kalshi Auth ─── */
 
 function normalizePem(raw: string): string {
-  let pem = raw.replace(/\\n/g, "\n").trim();
-  if (!pem.includes("-----BEGIN")) {
-    const type = pem.includes("PRIVATE KEY") ? "" : "RSA PRIVATE KEY";
-    pem = `-----BEGIN ${type || "RSA PRIVATE KEY"}-----\n${pem}\n-----END ${type || "RSA PRIVATE KEY"}-----`;
+  const normalizedRaw = raw.replace(/\\n/g, "\n").replace(/\r\n/g, "\n").trim();
+
+  if (normalizedRaw.includes("-----BEGIN") && normalizedRaw.split("\n").length > 3) {
+    return normalizedRaw;
   }
-  // Normalize PKCS#1 ↔ PKCS#8 headers
-  pem = pem.replace("BEGIN PRIVATE KEY", "BEGIN RSA PRIVATE KEY").replace("END PRIVATE KEY", "END RSA PRIVATE KEY");
-  return pem;
+
+  const isRsa = normalizedRaw.includes("RSA PRIVATE KEY");
+  const header = isRsa ? "-----BEGIN RSA PRIVATE KEY-----" : "-----BEGIN PRIVATE KEY-----";
+  const footer = isRsa ? "-----END RSA PRIVATE KEY-----" : "-----END PRIVATE KEY-----";
+  const b64 = normalizedRaw
+    .replace(/-----BEGIN (RSA )?PRIVATE KEY-----/g, "")
+    .replace(/-----END (RSA )?PRIVATE KEY-----/g, "")
+    .replace(/\s/g, "");
+  const lines = b64.match(/.{1,64}/g) || [];
+  return [header, ...lines, footer].join("\n");
 }
 
 function signKalshi(method: string, path: string, body = "") {
@@ -37,7 +44,11 @@ function signKalshi(method: string, path: string, body = "") {
   const signer = createSign("RSA-SHA256");
   signer.update(payload);
   const signature = signer.sign(
-    { key: pem, padding: constants.RSA_PKCS1_PSS_PADDING, saltLength: 32 },
+    {
+      key: pem,
+      padding: constants.RSA_PKCS1_PSS_PADDING,
+      saltLength: constants.RSA_PSS_SALTLEN_DIGEST,
+    },
     "base64"
   );
   return {
