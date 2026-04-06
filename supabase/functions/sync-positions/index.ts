@@ -284,6 +284,7 @@ Deno.serve(async (req) => {
           ? liveOrders.orders.length
           : 0,
         synced,
+        paperSynced,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
