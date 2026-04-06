@@ -22,6 +22,8 @@ interface AutoTradeSettings {
   cooldown_seconds: number;
   allowed_providers: string[];
   paper_mode: boolean;
+  paper_bankroll: number;
+  paper_bankroll_initial: number;
 }
 
 interface Position {
