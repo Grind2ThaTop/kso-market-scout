@@ -56,6 +56,7 @@ async function fetchPolymarketMarkets() {
       slug: m.slug ?? m.conditionId,
       conditionSlug: m.conditionId,
       marketSlug: m.slug ?? m.conditionId,
+      eventSlug: m.events?.[0]?.slug ?? m.slug ?? m.conditionId,
       category: m.groupItemTitle ?? m.category ?? m.tags?.[0] ?? m.question ?? "other",
       endDate: m.endDate ?? m.end_date,
       rules: m.description ?? "See exchange rules.",
@@ -95,6 +96,7 @@ async function fetchKalshiMarkets() {
       for (const m of ms) {
         m._eventTitle = event.title;
         m._eventCategory = event.category;
+        m._seriesTicker = event.series_ticker;
         allMarkets.push(m);
       }
     }
@@ -134,6 +136,7 @@ async function fetchKalshiMarkets() {
         platform: "kalshi",
         marketSlug: m.ticker,
         eventSlug: m.event_ticker ?? m.series_ticker,
+        seriesSlug: m._seriesTicker ?? m.series_ticker ?? m.event_ticker?.replace(/-[0-9].*$/, ''),
         category: m._eventCategory ?? m.category ?? m.title ?? "other",
         endDate: m.close_time ?? m.expiration_time,
         rules: m.rules_primary ?? "See Kalshi rules.",

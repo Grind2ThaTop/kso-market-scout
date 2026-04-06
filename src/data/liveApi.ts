@@ -190,6 +190,7 @@ const resolveMarketUrl = (
   platform: Market['platform'],
   marketSlug: string,
   eventSlug: string,
+  seriesSlug: string,
 ): string => {
   const directUrl = pickFirstString(
     row.market_url, row.marketUrl, row.url, row.permalink, row.link,
@@ -197,13 +198,12 @@ const resolveMarketUrl = (
   );
   if (directUrl.startsWith('http://') || directUrl.startsWith('https://')) return directUrl;
 
-  // For Polymarket, try to build URL from the slug field (used in gamma API)
   if (platform === 'polymarket') {
-    const polySlug = pickFirstString(row.slug, sourceRow.slug, row.conditionSlug, sourceRow.conditionSlug);
+    const polySlug = pickFirstString(row.eventSlug, sourceRow.eventSlug, row.slug, sourceRow.slug, row.conditionSlug, sourceRow.conditionSlug);
     if (polySlug) return `https://polymarket.com/event/${polySlug}`;
   }
 
-  return buildMarketUrl({ platform, marketSlug, eventSlug }) || '';
+  return buildMarketUrl({ platform, marketSlug, eventSlug, seriesSlug }) || '';
 };
 
 /** Check if a market is closed, resolved, expired, or otherwise not tradable */
@@ -341,11 +341,14 @@ const normalizeRows = (rows: unknown[], fetchedAt: string) => {
         row.eventSlug, row.event, row.event_ticker, row.series_ticker,
         sourceRow.eventSlug, sourceRow.event, sourceRow.event_ticker, sourceRow.series_ticker,
       );
+      const seriesSlug = pickFirstString(
+        row.seriesSlug, row.series_ticker,
+        sourceRow.seriesSlug, sourceRow.series_ticker,
+      );
 
       const yesPrice = (quote.bestYesBid + quote.bestYesAsk) / 2;
       const noPrice = 1 - yesPrice;
 
-      // Price changes - try to extract from source, default to 0
       const priceChange1h = pickFirstNumber(row.oneHourPriceChange, sourceRow.oneHourPriceChange) ?? 0;
       const priceChange24h = pickFirstNumber(row.oneDayPriceChange, sourceRow.oneDayPriceChange) ?? 0;
 
@@ -356,11 +359,12 @@ const normalizeRows = (rows: unknown[], fetchedAt: string) => {
         platform,
         marketSlug,
         eventSlug,
+        seriesSlug,
         category: normalizeCategory(row.category ?? row.group ?? row.tag ?? sourceRow.category ?? sourceRow.group ?? sourceRow.tag),
         eventEnd: eventEnd || fetchedAt,
         settlementRules: pickFirstString(row.rules, row.description, sourceRow.rules, sourceRow.description, row.rules_primary, sourceRow.rules_primary, 'See exchange rules.'),
         liquidityScore,
-        market_url: resolveMarketUrl(row, sourceRow, platform, marketSlug, eventSlug),
+        market_url: resolveMarketUrl(row, sourceRow, platform, marketSlug, eventSlug, seriesSlug),
         volume24h,
         lastTradeTime,
         lastUpdated,

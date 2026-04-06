@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { fetchScanSnapshot, ScanSnapshot } from '@/data/liveApi';
 
-const CACHE_KEY = 'kso-scan-cache';
+const QUERY_KEY = ['live-market-scan-v2'] as const;
+const CACHE_KEY = 'kso-scan-cache-v2';
 const CACHE_MAX_AGE_MS = 1000 * 60 * 30; // 30 minutes
 
 function loadCachedSnapshot(): ScanSnapshot | undefined {
@@ -22,14 +23,16 @@ function loadCachedSnapshot(): ScanSnapshot | undefined {
 function saveCachedSnapshot(data: ScanSnapshot) {
   try {
     localStorage.setItem(CACHE_KEY, JSON.stringify({ data, savedAt: Date.now() }));
-  } catch { /* quota exceeded — ignore */ }
+  } catch {
+    // ignore storage quota issues
+  }
 }
 
 const cachedSnapshot = loadCachedSnapshot();
 
 export function useMarketScanner() {
   return useQuery({
-    queryKey: ['live-market-scan'],
+    queryKey: QUERY_KEY,
     queryFn: async () => {
       const snapshot = await fetchScanSnapshot();
       saveCachedSnapshot(snapshot);
