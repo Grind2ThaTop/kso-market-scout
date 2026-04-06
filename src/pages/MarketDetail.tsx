@@ -54,6 +54,28 @@ const MarketDetail = () => {
     return { contracts, gross, totalFees, net };
   };
 
+  const cleanScrapedContent = (raw: string): string => {
+    // Remove navigation/sidebar noise from exchange pages
+    const lines = raw.split('\n');
+    const filtered = lines.filter(line => {
+      const t = line.trim();
+      // Skip empty lines at start
+      if (!t) return true;
+      // Skip polymarket nav links
+      if (/^\[?(Live|Futures|All Sports|NBA|NFL|NHL|UFC|Soccer|Football|NCAAB|UCL|MLS|EPL|La Liga|Serie A)\]?\(?https?:\/\/polymarket/i.test(t)) return false;
+      if (/^\[!\[/.test(t) && /polymarket/.test(t)) return false; // image links to polymarket
+      if (/^(Süper Lig|Liga MX|Norway|Brazil|Zuffa|CFB)\b/i.test(t)) return false;
+      // Skip kalshi nav
+      if (/^\[?(Browse|Live\d|Portfolio|Search|Ideas|Trending)\]?/i.test(t)) return false;
+      // Skip lines that are just numbers or sport counts
+      if (/^\d+\]?\(?https/.test(t)) return false;
+      return true;
+    });
+    // Trim leading blank lines
+    const result = filtered.join('\n').replace(/^\n+/, '').trim();
+    return result || 'No meaningful content extracted.';
+  };
+
   const handleDeepDive = async () => {
     if (!market.market_url) return;
     setDeepDiveLoading(true);
@@ -66,7 +88,7 @@ const MarketDetail = () => {
       });
       if (result.success) {
         const md = result.data?.markdown || result.data?.data?.markdown || 'No content returned.';
-        setDeepDiveData(md);
+        setDeepDiveData(cleanScrapedContent(md));
       } else {
         setDeepDiveError(result.error || 'Scrape failed');
       }
