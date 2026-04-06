@@ -200,6 +200,8 @@ const AutoTradePage = () => {
         max_open_positions: settings.max_open_positions, min_signal_score: settings.min_signal_score,
         min_confidence: settings.min_confidence, cooldown_seconds: settings.cooldown_seconds,
         allowed_providers: settings.allowed_providers, paper_mode: settings.paper_mode,
+        paper_bankroll: (settings as any).paper_bankroll ?? 1000,
+        paper_bankroll_initial: (settings as any).paper_bankroll_initial ?? 1000,
       });
     }
   }, [settings]);
