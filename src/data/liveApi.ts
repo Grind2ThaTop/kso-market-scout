@@ -32,7 +32,7 @@ const parseArray = (payload: unknown): unknown[] => {
 
 const normalizeCategory = (value: unknown): Market['category'] => {
   const raw = String(value ?? '').toLowerCase();
-  if (raw.includes('sport') || raw.includes('nba') || raw.includes('nfl') || raw.includes('ufc') || raw.includes('mlb') || raw.includes('nhl') || raw.includes('soccer') || raw.includes('tennis') || raw.includes('golf') || raw.includes('f1') || raw.includes('boxing') || raw.includes('mma') || raw.includes('ncaa') || raw.includes('fifa') || raw.includes('olympics')) return 'sports';
+  if (raw.includes('sport') || raw.includes('nba') || raw.includes('nfl') || raw.includes('ufc') || raw.includes('mlb') || raw.includes('nhl') || raw.includes('soccer') || raw.includes('tennis') || raw.includes('golf') || raw.includes('f1') || raw.includes('boxing') || raw.includes('mma') || raw.includes('ncaa') || raw.includes('fifa') || raw.includes('olympics') || raw.includes('lakers') || raw.includes('celtics') || raw.includes('warriors') || raw.includes('yankees') || raw.includes('dodgers') || raw.includes('chiefs') || raw.includes('eagles') || raw.includes('premier league') || raw.includes('epl') || raw.includes('champions league') || raw.includes('world cup') || raw.includes('super bowl') || raw.includes('playoff') || raw.includes('stanley cup') || raw.includes('world series') || raw.includes('march madness') || raw.includes('wnba') || raw.includes('pga') || raw.includes('nascar') || raw.includes('formula') || raw.includes('grand prix') || raw.includes('wimbledon') || raw.includes('us open') || raw.includes('serie a') || raw.includes('la liga') || raw.includes('bundesliga') || raw.includes('cricket') || raw.includes('rugby')) return 'sports';
   if (raw.includes('polit') || raw.includes('elect') || raw.includes('senate') || raw.includes('congress') || raw.includes('president') || raw.includes('governor') || raw.includes('democrat') || raw.includes('republican') || raw.includes('vote') || raw.includes('geopolit') || raw.includes('war') || raw.includes('nato') || raw.includes('government')) return 'politics';
   if (raw.includes('weath') || raw.includes('temp') || raw.includes('rain') || raw.includes('snow') || raw.includes('hurricane') || raw.includes('tornado') || raw.includes('climate') || raw.includes('wildfire') || raw.includes('earthquake')) return 'weather';
   if (raw.includes('cult') || raw.includes('entertain') || raw.includes('movie') || raw.includes('music') || raw.includes('oscar') || raw.includes('grammy') || raw.includes('celebrity') || raw.includes('tv') || raw.includes('social media') || raw.includes('tiktok') || raw.includes('youtube') || raw.includes('awards')) return 'entertainment';
@@ -360,7 +360,9 @@ const normalizeRows = (rows: unknown[], fetchedAt: string) => {
         marketSlug,
         eventSlug,
         seriesSlug,
-        category: normalizeCategory(row.category ?? row.group ?? row.tag ?? sourceRow.category ?? sourceRow.group ?? sourceRow.tag),
+        category: normalizeCategory(
+          `${row.category ?? row.group ?? row.tag ?? sourceRow.category ?? sourceRow.group ?? sourceRow.tag ?? ''} ${title}`
+        ),
         eventEnd: eventEnd || fetchedAt,
         settlementRules: pickFirstString(row.rules, row.description, sourceRow.rules, sourceRow.description, row.rules_primary, sourceRow.rules_primary, 'See exchange rules.'),
         liquidityScore,
