@@ -190,6 +190,7 @@ const resolveMarketUrl = (
   platform: Market['platform'],
   marketSlug: string,
   eventSlug: string,
+  seriesSlug: string,
 ): string => {
   const directUrl = pickFirstString(
     row.market_url, row.marketUrl, row.url, row.permalink, row.link,
@@ -202,7 +203,7 @@ const resolveMarketUrl = (
     if (polySlug) return `https://polymarket.com/event/${polySlug}`;
   }
 
-  return buildMarketUrl({ platform, marketSlug, eventSlug }) || '';
+  return buildMarketUrl({ platform, marketSlug, eventSlug, seriesSlug }) || '';
 };
 
 /** Check if a market is closed, resolved, expired, or otherwise not tradable */
