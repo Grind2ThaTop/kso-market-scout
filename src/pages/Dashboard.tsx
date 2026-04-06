@@ -56,6 +56,37 @@ const Dashboard = () => {
   const markets = data?.markets ?? [];
   const quotes = data?.quotes ?? [];
 
+  const rawFilteredMarkets = useMemo(() => {
+    let filtered = [...markets];
+
+    if (filterCategory !== 'all') {
+      filtered = filtered.filter((market) => market.category === filterCategory);
+    }
+
+    if (filterExchange !== 'all') {
+      filtered = filtered.filter((market) => market.platform === filterExchange);
+    }
+
+    if (filterVolume !== 'all') {
+      const minVol = filterVolume === '1k' ? 1000 : filterVolume === '10k' ? 10000 : 100000;
+      filtered = filtered.filter((market) => (market.volume24h ?? 0) >= minVol);
+    }
+
+    if (filterExpiry !== 'all') {
+      filtered = filtered.filter((market) => {
+        const hrs = (new Date(market.eventEnd).getTime() - Date.now()) / 3_600_000;
+        if (!Number.isFinite(hrs)) return false;
+        if (filterExpiry === '1h') return hrs > 0 && hrs <= 1;
+        if (filterExpiry === '24h') return hrs > 0 && hrs <= 24;
+        if (filterExpiry === '7d') return hrs > 0 && hrs <= 168;
+        return hrs > 0 && hrs <= 720;
+      });
+    }
+
+    return filtered;
+  }, [markets, filterCategory, filterExchange, filterVolume, filterExpiry]);
+
+
   const actionableSignals = useMemo(() => {
     let filtered = signals.filter((signal) => {
       if (signal.direction === 'PASS') return false;
@@ -90,7 +121,7 @@ const Dashboard = () => {
         if (filterExpiry === '1h') return hrs <= 1;
         if (filterExpiry === '24h') return hrs <= 24;
         if (filterExpiry === '7d') return hrs <= 168;
-        return hrs <= 720; // 30d
+        return hrs <= 720;
       });
     }
     return filtered;
@@ -129,6 +160,23 @@ const Dashboard = () => {
     const active = actionableSignals.filter(s => s.action !== 'wait');
     return active.reduce((sum, sig) => sum + sig.expectedNetEdge, 0) / Math.max(1, active.length);
   }, [actionableSignals]);
+
+  const hasActiveFilters = filterDirection !== 'ALL' || filterCategory !== 'all' || filterExchange !== 'all' || filterVolume !== 'all' || filterExpiry !== 'all';
+  const activeFilterLabel = [
+    filterExchange !== 'all' ? (filterExchange === 'kalshi' ? 'Kalshi' : 'Polymarket') : null,
+    filterDirection !== 'ALL' ? filterDirection : null,
+    filterVolume !== 'all' ? `vol ≥ $${filterVolume}` : null,
+    filterExpiry !== 'all' ? `≤${filterExpiry}` : null,
+    filterCategory !== 'all' ? filterCategory : null,
+  ].filter(Boolean).join(' · ');
+
+  const resetFilters = () => {
+    setFilterDirection('ALL');
+    setFilterCategory('all');
+    setFilterExchange('all');
+    setFilterVolume('all');
+    setFilterExpiry('all');
+  };
 
   if (!data && !isLoading && !isFetching) {
     return (
@@ -312,7 +360,25 @@ const Dashboard = () => {
         {/* Mobile cards */}
         <div className="md:hidden divide-y divide-border/50">
           {sortedSignals.length === 0 && (
-            <div className="px-3 py-8 text-center text-muted-foreground text-sm">No signals match current filters.</div>
+            <div className="px-3 py-8 text-center space-y-3">
+              <p className="text-sm text-muted-foreground">
+                {rawFilteredMarkets.length === 0
+                  ? `No scanned markets match ${activeFilterLabel || 'these filters'}.`
+                  : `${rawFilteredMarkets.length} scanned markets match ${activeFilterLabel || 'these filters'}, but none qualify as actionable signals.`}
+              </p>
+              {hasActiveFilters && (
+                <div className="flex items-center justify-center gap-2 flex-wrap">
+                  <button onClick={resetFilters} className="px-3 py-1.5 rounded-md bg-primary/15 text-primary text-xs font-semibold">
+                    Reset filters
+                  </button>
+                  {filterExchange === 'kalshi' && filterExpiry === '24h' && (
+                    <button onClick={() => setFilterExpiry('7d')} className="px-3 py-1.5 rounded-md bg-surface-2 text-foreground text-xs font-semibold">
+                      Try ≤7D
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           )}
           {sortedSignals.map(sig => {
             const mkt = markets.find(m => m.id === sig.marketId);
@@ -374,7 +440,29 @@ const Dashboard = () => {
             </thead>
             <tbody>
               {sortedSignals.length === 0 && (
-                <tr><td colSpan={12} className="px-3 py-8 text-center text-muted-foreground">No signals match current filters.</td></tr>
+                <tr>
+                  <td colSpan={12} className="px-3 py-8 text-center">
+                    <div className="space-y-3">
+                      <p className="text-muted-foreground">
+                        {rawFilteredMarkets.length === 0
+                          ? `No scanned markets match ${activeFilterLabel || 'these filters'}.`
+                          : `${rawFilteredMarkets.length} scanned markets match ${activeFilterLabel || 'these filters'}, but none qualify as actionable signals.`}
+                      </p>
+                      {hasActiveFilters && (
+                        <div className="flex items-center justify-center gap-2 flex-wrap">
+                          <button onClick={resetFilters} className="px-3 py-1.5 rounded-md bg-primary/15 text-primary text-xs font-semibold">
+                            Reset filters
+                          </button>
+                          {filterExchange === 'kalshi' && filterExpiry === '24h' && (
+                            <button onClick={() => setFilterExpiry('7d')} className="px-3 py-1.5 rounded-md bg-surface-2 text-foreground text-xs font-semibold">
+                              Try ≤7D
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                </tr>
               )}
               {sortedSignals.map(sig => {
                 const mkt = markets.find(m => m.id === sig.marketId);
