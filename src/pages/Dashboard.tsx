@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { TrendingUp, TrendingDown, Target, AlertTriangle, DollarSign, Activity, WifiOff, ArrowUpRight, ArrowDownRight, MinusCircle, Zap, Clock, Filter } from 'lucide-react';
 import { useMarketScanner } from '@/hooks/useMarketScanner';
