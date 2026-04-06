@@ -338,6 +338,7 @@ const AutoTradePage = () => {
 
   const openPositions = positions.filter(p => p.status === 'open');
   const marketTitleMap = new Map(positions.map(p => [p.market_id, p.market_title]));
+  const positionByMarket = new Map(positions.map(p => [p.market_id, p]));
   const paperPositions = positions.filter(p => p.paper_mode);
   const livePositions = positions.filter(p => !p.paper_mode);
   const paperPnl = paperPositions.reduce((s, p) => s + (p.pnl ?? 0), 0);
@@ -753,22 +754,34 @@ const AutoTradePage = () => {
                     <th className="px-2 py-1.5 text-left">Time</th>
                     <th className="px-2 py-1.5 text-left">Market</th>
                     <th className="px-2 py-1.5 text-left">Side</th>
-                    <th className="px-2 py-1.5 text-left">Price</th>
+                    <th className="px-2 py-1.5 text-left">Entry</th>
+                    <th className="px-2 py-1.5 text-left">Target</th>
                     <th className="px-2 py-1.5 text-left">Size</th>
+                    <th className="px-2 py-1.5 text-left">P&L</th>
                     <th className="px-2 py-1.5 text-left">Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {orders.slice(0, 20).map(o => (
+                  {orders.slice(0, 20).map(o => {
+                    const pos = positionByMarket.get(o.market_id);
+                    const targetPrice = pos?.target_price;
+                    const currentPrice = pos?.current_price ?? o.price;
+                    const pnl = pos?.pnl ?? (o.side === 'yes'
+                      ? (currentPrice - o.price) * (o.size / o.price)
+                      : (o.price - currentPrice) * (o.size / o.price));
+                    const pnlValue = Number(pnl) || 0;
+                    return (
                     <tr key={o.id} className="border-b border-border/30">
                       <td className="px-2 py-1.5 text-muted-foreground">{new Date(o.created_at).toLocaleTimeString()}</td>
                       <td className="px-2 py-1.5 truncate max-w-[200px]">{marketTitleMap.get(o.market_id) || o.market_id}</td>
                       <td className="px-2 py-1.5"><span className={o.side === 'yes' ? 'text-profit' : 'text-loss'}>{o.side.toUpperCase()}</span></td>
                       <td className="px-2 py-1.5 font-mono">{(o.price * 100).toFixed(0)}¢</td>
+                      <td className="px-2 py-1.5 font-mono">{targetPrice ? `${(targetPrice * 100).toFixed(0)}¢` : '—'}</td>
                       <td className="px-2 py-1.5 font-mono">${o.size.toFixed(2)}</td>
+                      <td className={`px-2 py-1.5 font-mono font-bold ${pnlValue >= 0 ? 'text-profit' : 'text-loss'}`}>{pnlValue >= 0 ? '+' : ''}{pnlValue.toFixed(2)}</td>
                       <td className="px-2 py-1.5"><Badge variant="outline" className="text-[9px]">{o.status}</Badge></td>
-                    </tr>
-                  ))}
+                    </tr>);
+                  })}
                 </tbody>
               </table>
             </div>
