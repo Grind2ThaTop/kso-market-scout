@@ -218,22 +218,22 @@ const Dashboard = () => {
       ) : null}
 
       {/* Stats grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+      <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-2 md:gap-3">
         {[
-          { label: 'Active Markets', value: markets.length.toString(), icon: Activity, color: 'text-foreground' },
-          { label: 'YES Signals', value: yesSignals.toString(), icon: TrendingUp, color: 'text-profit' },
-          { label: 'NO Signals', value: noSignals.toString(), icon: TrendingDown, color: 'text-loss' },
+          { label: 'Markets', value: markets.length.toString(), icon: Activity, color: 'text-foreground' },
+          { label: 'YES', value: yesSignals.toString(), icon: TrendingUp, color: 'text-profit' },
+          { label: 'NO', value: noSignals.toString(), icon: TrendingDown, color: 'text-loss' },
           { label: 'Avg Edge', value: fmtC(avgEdge), icon: DollarSign, color: 'text-profit' },
-          { label: 'Daily Target', value: fmt(remaining), icon: Target, color: 'text-primary' },
+          { label: 'Target', value: fmt(remaining), icon: Target, color: 'text-primary' },
           { label: 'Max Loss', value: fmt(scannerConfig.profile.maxDailyLoss), icon: AlertTriangle, color: 'text-loss' },
           { label: 'Est. Trades', value: Number.isFinite(tradesNeeded) ? tradesNeeded.toString() : '—', icon: Clock, color: 'text-muted-foreground' },
         ].map(({ label, value, icon: Icon, color }) => (
-          <div key={label} className="glass-card border border-border rounded-lg p-3 interactive-lift">
-            <div className="flex items-center gap-1.5 mb-1">
-              <Icon className={`w-3.5 h-3.5 ${color}`} />
-              <span className="text-[10px] text-muted-foreground">{label}</span>
+          <div key={label} className="glass-card border border-border rounded-lg p-2 md:p-3 interactive-lift">
+            <div className="flex items-center gap-1 mb-0.5 md:mb-1">
+              <Icon className={`w-3 h-3 md:w-3.5 md:h-3.5 ${color}`} />
+              <span className="text-[9px] md:text-[10px] text-muted-foreground truncate">{label}</span>
             </div>
-            <span className={`text-lg font-bold font-mono ${color}`}>{value}</span>
+            <span className={`text-sm md:text-lg font-bold font-mono ${color}`}>{value}</span>
           </div>
         ))}
       </div>
