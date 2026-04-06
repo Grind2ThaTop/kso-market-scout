@@ -185,10 +185,17 @@ const resolveMarketUrl = (
   eventSlug: string,
 ): string => {
   const directUrl = pickFirstString(
-    row.market_url, row.marketUrl, row.url, row.permalink,
-    sourceRow.market_url, sourceRow.marketUrl, sourceRow.url, sourceRow.permalink,
+    row.market_url, row.marketUrl, row.url, row.permalink, row.link,
+    sourceRow.market_url, sourceRow.marketUrl, sourceRow.url, sourceRow.permalink, sourceRow.link,
   );
   if (directUrl.startsWith('http://') || directUrl.startsWith('https://')) return directUrl;
+
+  // For Polymarket, try to build URL from the slug field (used in gamma API)
+  if (platform === 'polymarket') {
+    const polySlug = pickFirstString(row.slug, sourceRow.slug, row.conditionSlug, sourceRow.conditionSlug);
+    if (polySlug) return `https://polymarket.com/event/${polySlug}`;
+  }
+
   return buildMarketUrl({ platform, marketSlug, eventSlug }) || '';
 };
 
