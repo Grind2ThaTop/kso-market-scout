@@ -134,7 +134,7 @@ async function fetchKalshiMarkets() {
         platform: "kalshi",
         marketSlug: m.ticker,
         eventSlug: m.event_ticker ?? m.series_ticker,
-        category: m._eventCategory ?? "economics",
+        category: m._eventCategory ?? m.category ?? m.title ?? "other",
         endDate: m.close_time ?? m.expiration_time,
         rules: m.rules_primary ?? "See Kalshi rules.",
         lastTradePrice: lastPrice,
