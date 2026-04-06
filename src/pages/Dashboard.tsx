@@ -71,8 +71,30 @@ const Dashboard = () => {
         return market?.category === filterCategory;
       });
     }
+    if (filterExchange !== 'all') {
+      filtered = filtered.filter(s => {
+        const market = markets.find(m => m.id === s.marketId);
+        return market?.platform === filterExchange;
+      });
+    }
+    if (filterVolume !== 'all') {
+      const minVol = filterVolume === '1k' ? 1000 : filterVolume === '10k' ? 10000 : 100000;
+      filtered = filtered.filter(s => {
+        const market = markets.find(m => m.id === s.marketId);
+        return (market?.volume24h ?? 0) >= minVol;
+      });
+    }
+    if (filterExpiry !== 'all') {
+      filtered = filtered.filter(s => {
+        const hrs = timeToHours(s.timeToExpiry);
+        if (filterExpiry === '1h') return hrs <= 1;
+        if (filterExpiry === '24h') return hrs <= 24;
+        if (filterExpiry === '7d') return hrs <= 168;
+        return hrs <= 720; // 30d
+      });
+    }
     return filtered;
-  }, [signals, markets, filterDirection, filterCategory]);
+  }, [signals, markets, filterDirection, filterCategory, filterExchange, filterVolume, filterExpiry]);
 
   const sortedSignals = useMemo(() => {
     const copy = [...actionableSignals];
