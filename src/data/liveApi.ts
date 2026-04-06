@@ -548,8 +548,8 @@ function buildSignals(markets: Market[], quotes: QuoteSnapshot[]): Signal[] {
       );
 
       // Contrarian value: price in mid-range with sharp indicators
-      const yesValue = mid >= 0.25 && mid <= 0.75 && yesNetEdge > 0.01;
-      const noValue  = mid >= 0.25 && mid <= 0.75 && noNetEdge > 0.01;
+      const yesValue = mid >= 0.15 && mid <= 0.85 && yesNetEdge > 0.005;
+      const noValue  = mid >= 0.15 && mid <= 0.85 && noNetEdge > 0.005;
 
       if (hasMinLiquidity && tradableSpread) {
         if (yesSharpScore > 0.15 && yesNetEdge > 0.005 && yesValue) {
