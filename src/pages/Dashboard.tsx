@@ -186,14 +186,14 @@ const Dashboard = () => {
   );
 
   return (
-    <div className="flex-1 overflow-auto p-4 space-y-4">
+    <div className="flex-1 overflow-auto p-3 md:p-4 space-y-3 md:space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-bold flex items-center gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <h1 className="text-base md:text-lg font-bold flex items-center gap-2">
           <Zap className="w-5 h-5 text-primary" /> Live Scanner
         </h1>
-        <div className="flex items-center gap-3">
-          <button onClick={() => refetch()} disabled={isFetching} className="px-3 py-1 bg-primary text-primary-foreground rounded text-xs font-bold hover:opacity-90 transition disabled:opacity-50">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={() => refetch()} disabled={isFetching} className="px-3 py-1.5 bg-primary text-primary-foreground rounded text-xs font-bold hover:opacity-90 transition disabled:opacity-50">
             {isFetching ? 'Scanning…' : '⚡ Scan Now'}
           </button>
           <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${freshnessColors[freshness]}`}>{freshness}</span>
