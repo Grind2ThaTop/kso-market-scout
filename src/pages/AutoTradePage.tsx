@@ -583,7 +583,18 @@ const AutoTradePage = () => {
               <p className="text-sm font-medium">Auto-Trade Enabled</p>
               <p className="text-[10px] text-muted-foreground">Engine scans & executes every 5 minutes while ON</p>
             </div>
-            <Switch checked={localSettings.enabled} onCheckedChange={v => setLocalSettings(s => ({ ...s, enabled: v }))} />
+            <Switch checked={localSettings.enabled} onCheckedChange={v => {
+              const next = { ...localSettings, enabled: v };
+              setLocalSettings(next);
+              saveMutation.mutate(next, {
+                onSuccess: () => {
+                  toast.success(v ? '🟢 Auto-Trade enabled' : '🔴 Auto-Trade disabled');
+                  if (v) {
+                    runEngineMutation.mutate();
+                  }
+                },
+              });
+            }} disabled={saveMutation.isPending} />
           </div>
 
           <div className="flex items-center justify-between">
