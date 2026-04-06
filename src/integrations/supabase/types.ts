@@ -95,6 +95,48 @@ export type Database = {
         }
         Relationships: []
       }
+      engine_runs: {
+        Row: {
+          details: Json | null
+          error_message: string | null
+          finished_at: string | null
+          id: string
+          paper_mode: boolean | null
+          signals_found: number | null
+          started_at: string
+          status: string
+          trades_executed: number | null
+          trades_skipped: number | null
+          user_id: string
+        }
+        Insert: {
+          details?: Json | null
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          paper_mode?: boolean | null
+          signals_found?: number | null
+          started_at?: string
+          status?: string
+          trades_executed?: number | null
+          trades_skipped?: number | null
+          user_id: string
+        }
+        Update: {
+          details?: Json | null
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          paper_mode?: boolean | null
+          signals_found?: number | null
+          started_at?: string
+          status?: string
+          trades_executed?: number | null
+          trades_skipped?: number | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       order_history: {
         Row: {
           created_at: string
