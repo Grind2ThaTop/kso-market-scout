@@ -1,5 +1,4 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
-import { constants, createSign } from "node:crypto";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,46 +13,45 @@ const KALSHI_TRADING = "https://trading-api.kalshi.com/trade-api/v2";
 const KALSHI_API_KEY_ID = Deno.env.get("KALSHI_API_KEY_ID");
 const KALSHI_PRIVATE_KEY = Deno.env.get("KALSHI_PRIVATE_KEY");
 
-/* ─── Kalshi Auth ─── */
+/* ─── Kalshi Auth (Web Crypto) ─── */
 
-function normalizePem(raw: string): string {
-  const normalizedRaw = raw.replace(/\\n/g, "\n").replace(/\r\n/g, "\n").trim();
-
-  if (normalizedRaw.includes("-----BEGIN") && normalizedRaw.split("\n").length > 3) {
-    return normalizedRaw;
-  }
-
-  const isRsa = normalizedRaw.includes("RSA PRIVATE KEY");
-  const header = isRsa ? "-----BEGIN RSA PRIVATE KEY-----" : "-----BEGIN PRIVATE KEY-----";
-  const footer = isRsa ? "-----END RSA PRIVATE KEY-----" : "-----END PRIVATE KEY-----";
-  const b64 = normalizedRaw
-    .replace(/-----BEGIN (RSA )?PRIVATE KEY-----/g, "")
-    .replace(/-----END (RSA )?PRIVATE KEY-----/g, "")
-    .replace(/\s/g, "");
-  const lines = b64.match(/.{1,64}/g) || [];
-  return [header, ...lines, footer].join("\n");
+function uint8ToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary);
 }
 
-function signKalshi(method: string, path: string, body = "") {
+async function signKalshi(method: string, path: string, body = ""): Promise<Record<string, string> | null> {
   if (!KALSHI_API_KEY_ID || !KALSHI_PRIVATE_KEY) return null;
   const timestamp = String(Date.now());
   const pathWithoutQuery = path.split("?")[0];
   const signedPath = `/trade-api/v2${pathWithoutQuery}`;
   const payload = `${timestamp}${method.toUpperCase()}${signedPath}${body}`;
-  const pem = normalizePem(KALSHI_PRIVATE_KEY);
-  const signer = createSign("RSA-SHA256");
-  signer.update(payload);
-  const signature = signer.sign(
-    {
-      key: pem,
-      padding: constants.RSA_PKCS1_PSS_PADDING,
-      saltLength: constants.RSA_PSS_SALTLEN_DIGEST,
-    },
-    "base64"
+
+  const pemBody = KALSHI_PRIVATE_KEY
+    .replace(/\\n/g, "\n")
+    .replace(/-----BEGIN (RSA )?PRIVATE KEY-----/g, "")
+    .replace(/-----END (RSA )?PRIVATE KEY-----/g, "")
+    .replace(/\s/g, "");
+  const keyData = Uint8Array.from(atob(pemBody), (c) => c.charCodeAt(0));
+
+  const key = await crypto.subtle.importKey(
+    "pkcs8",
+    keyData,
+    { name: "RSA-PSS", hash: "SHA-256" },
+    false,
+    ["sign"]
   );
+
+  const sig = await crypto.subtle.sign(
+    { name: "RSA-PSS", saltLength: 32 },
+    key,
+    new TextEncoder().encode(payload)
+  );
+
   return {
     "KALSHI-ACCESS-KEY": KALSHI_API_KEY_ID,
-    "KALSHI-ACCESS-SIGNATURE": signature,
+    "KALSHI-ACCESS-SIGNATURE": uint8ToBase64(new Uint8Array(sig)),
     "KALSHI-ACCESS-TIMESTAMP": timestamp,
     "Content-Type": "application/json",
     "Accept": "application/json",
