@@ -474,6 +474,10 @@ const AutoTradePage = () => {
                 {paperPnl >= 0 ? '+' : ''}${paperPnl.toFixed(2)} ({localSettings.paper_bankroll_initial > 0 ? ((paperPnl / localSettings.paper_bankroll_initial) * 100).toFixed(1) : '0'}%)
               </span>
             </div>
+            <div className="flex items-center justify-between mt-2 text-[10px] text-muted-foreground">
+              <span>In Trades: ${paperExposure.toFixed(2)}</span>
+              <span>Free Cash: ${paperBankrollCurrent.toFixed(2)}</span>
+            </div>
             <div className="flex items-center gap-2 mt-2 text-[10px]">
               <span className="text-muted-foreground">Open: {paperPositions.filter(p => p.status === 'open').length}</span>
               <span className="text-muted-foreground">Closed: {paperPositions.filter(p => p.status !== 'open').length}</span>
