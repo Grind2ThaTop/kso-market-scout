@@ -100,6 +100,8 @@ const defaultSettings: Omit<AutoTradeSettings, 'id' | 'user_id'> = {
   cooldown_seconds: 300,
   allowed_providers: ['kalshi', 'polymarket'],
   paper_mode: true,
+  paper_bankroll: 1000,
+  paper_bankroll_initial: 1000,
 };
 
 const EXCHANGE_BALANCE_STORAGE_KEY = 'kso_exchange_balance';
