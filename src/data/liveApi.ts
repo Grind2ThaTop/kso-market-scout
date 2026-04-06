@@ -80,7 +80,7 @@ const inferQuote = (row: Record<string, unknown>) => {
 
 export interface ScanSnapshot {
   fetchedAt: string;
-  source: 'live-api' | 'integrations-api' | 'demo';
+  source: 'live-api' | 'live-edge' | 'integrations-api' | 'demo';
   markets: Market[];
   quotes: QuoteSnapshot[];
   signals: Signal[];
