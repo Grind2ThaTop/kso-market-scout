@@ -485,7 +485,7 @@ function buildSignals(markets: Market[], quotes: QuoteSnapshot[]): Signal[] {
 
       // ── HARD FILTERS ──
       // Kill anything too close to resolved — no edge left
-      if (mid >= 0.85 || mid <= 0.15) return null;
+      if (mid >= 0.92 || mid <= 0.08) return null;
 
       // ── CORE METRICS ──
       const yesProfitRoom = Math.max(0, 0.95 - quote.bestYesAsk);   // room if YES wins
