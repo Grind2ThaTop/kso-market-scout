@@ -418,7 +418,13 @@ Deno.serve(async (req) => {
       let errorMessage: string | null = null;
       let executedPrice = entryPrice;
 
-      // LIVE KALSHI EXECUTION
+      // LIVE EXECUTION
+      if (!settings.paper_mode && signal.provider !== "kalshi") {
+        console.log(`[LIVE] Skipping unsupported provider: ${signal.provider} ${signal.marketId}`);
+        skipped++;
+        continue;
+      }
+
       if (!settings.paper_mode && signal.provider === "kalshi" && hasKalshiCreds) {
         try {
           const kalshiOrder = { ticker: signal.marketId, action: "buy", side, type: "market", count: contracts };
@@ -433,9 +439,6 @@ Deno.serve(async (req) => {
           errorMessage = String(err);
           orderStatus = "failed";
         }
-      } else if (!settings.paper_mode) {
-        orderStatus = "failed";
-        errorMessage = `Live execution not yet supported for ${signal.provider}`;
       }
 
       // Create position

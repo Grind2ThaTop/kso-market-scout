@@ -9,20 +9,21 @@ const corsHeaders = {
 
 const KALSHI_BASE = "https://api.elections.kalshi.com/trade-api/v2";
 
-/** Normalize a PEM key that may have lost its line breaks */
+/** Normalize a PEM key that may have lost its line breaks or contains escaped \n */
 function normalizePem(raw: string): string {
-  // If it already looks like a proper PEM with line breaks, return as-is
-  if (raw.includes("-----BEGIN") && raw.split("\n").length > 3) return raw;
-  
-  // Strip any existing headers/whitespace, then re-wrap
-  const isRsa = raw.includes("RSA PRIVATE KEY");
+  const normalizedRaw = raw.replace(/\\n/g, "\n").replace(/\r\n/g, "\n").trim();
+
+  if (normalizedRaw.includes("-----BEGIN") && normalizedRaw.split("\n").length > 3) {
+    return normalizedRaw;
+  }
+
+  const isRsa = normalizedRaw.includes("RSA PRIVATE KEY");
   const header = isRsa ? "-----BEGIN RSA PRIVATE KEY-----" : "-----BEGIN PRIVATE KEY-----";
   const footer = isRsa ? "-----END RSA PRIVATE KEY-----" : "-----END PRIVATE KEY-----";
-  const b64 = raw
+  const b64 = normalizedRaw
     .replace(/-----BEGIN (RSA )?PRIVATE KEY-----/g, "")
     .replace(/-----END (RSA )?PRIVATE KEY-----/g, "")
     .replace(/\s/g, "");
-  // Re-wrap at 64 chars per line
   const lines = b64.match(/.{1,64}/g) || [];
   return [header, ...lines, footer].join("\n");
 }
