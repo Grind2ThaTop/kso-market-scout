@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchScanSnapshot, ScanSnapshot } from '@/data/liveApi';
 
-const QUERY_KEY = ['live-market-scan-v3'] as const;
-const CACHE_KEY = 'kso-scan-cache-v3';
+const QUERY_KEY = ['live-market-scan-v4'] as const;
+const CACHE_KEY = 'kso-scan-cache-v4';
 const CACHE_DB_NAME = 'kso-market-cache';
 const CACHE_STORE_NAME = 'snapshots';
 const CACHE_MAX_AGE_MS = 1000 * 60 * 30; // 30 minutes
