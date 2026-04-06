@@ -338,7 +338,8 @@ const normalizeRows = (rows: unknown[], fetchedAt: string) => {
         sourceRow.marketSlug, sourceRow.slug, sourceRow.conditionSlug, sourceRow.ticker,
       );
       const eventSlug = pickFirstString(
-        row.eventSlug, row.event, row.series_ticker, sourceRow.eventSlug, sourceRow.event, sourceRow.event_ticker, sourceRow.series_ticker,
+        row.eventSlug, row.event, row.event_ticker, row.series_ticker,
+        sourceRow.eventSlug, sourceRow.event, sourceRow.event_ticker, sourceRow.series_ticker,
       );
 
       const yesPrice = (quote.bestYesBid + quote.bestYesAsk) / 2;
