@@ -337,8 +337,13 @@ const AutoTradePage = () => {
   });
 
   const openPositions = positions.filter(p => p.status === 'open');
+  const paperPositions = positions.filter(p => p.paper_mode);
+  const livePositions = positions.filter(p => !p.paper_mode);
+  const paperPnl = paperPositions.reduce((s, p) => s + (p.pnl ?? 0), 0);
+  const livePnl = livePositions.reduce((s, p) => s + (p.pnl ?? 0), 0);
   const totalPnl = positions.reduce((s, p) => s + (p.pnl ?? 0), 0);
   const totalPortfolio = (exchangeBalance.available ?? 0) + (exchangeBalance.total ?? 0) + (polyBalance.available ?? 0);
+  const paperBankrollCurrent = localSettings.paper_bankroll_initial + paperPnl;
   const lastRun = engineRuns[0];
   const engineActive = settings?.enabled && !settings?.kill_switch;
 
