@@ -5,6 +5,7 @@ export interface Market {
   platform: 'polymarket' | 'kalshi';
   marketSlug?: string;
   eventSlug?: string;
+  seriesSlug?: string;
   category: 'sports' | 'politics' | 'economics' | 'weather' | 'culture' | 'crypto' | 'tech' | 'science' | 'entertainment' | 'finance' | 'health' | 'legal' | 'other';
   eventEnd: string;
   settlementRules: string;

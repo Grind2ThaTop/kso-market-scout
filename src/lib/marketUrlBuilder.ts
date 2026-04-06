@@ -1,27 +1,24 @@
 import type { Market } from '@/data/types';
 
-const buildPolymarketUrl = (market: Pick<Market, 'marketSlug'>): string | null => {
-  const slug = market.marketSlug?.trim();
+const buildPolymarketUrl = (market: Pick<Market, 'marketSlug' | 'eventSlug'>): string | null => {
+  const slug = market.eventSlug?.trim() || market.marketSlug?.trim();
   if (!slug) return null;
-  // Polymarket event pages: https://polymarket.com/event/{slug}
-  // If slug looks like a condition ID (hex), link to it directly
-  if (/^0x[0-9a-fA-F]+$/.test(slug)) {
-    return `https://polymarket.com/event/${slug}`;
-  }
   return `https://polymarket.com/event/${slug}`;
 };
 
-const buildKalshiUrl = (market: Pick<Market, 'eventSlug' | 'marketSlug'>): string | null => {
-  const eventSlug = market.eventSlug?.trim()?.toLowerCase();
-  const marketSlug = market.marketSlug?.trim()?.toLowerCase();
-  // Kalshi format: /markets/event-ticker/market-ticker or just /markets/event-ticker
-  if (eventSlug && marketSlug) return `https://kalshi.com/markets/${eventSlug}/${marketSlug}`;
-  if (eventSlug) return `https://kalshi.com/markets/${eventSlug}`;
-  if (marketSlug) return `https://kalshi.com/markets/${marketSlug}`;
-  return null;
+const deriveKalshiSeriesSlug = (market: Pick<Market, 'seriesSlug' | 'eventSlug' | 'marketSlug'>): string | null => {
+  const rawSlug = market.seriesSlug?.trim() || market.eventSlug?.trim() || market.marketSlug?.trim();
+  if (!rawSlug) return null;
+  return rawSlug.replace(/-[0-9].*$/, '').toLowerCase();
 };
 
-export const buildMarketUrl = (market: Pick<Market, 'platform' | 'marketSlug' | 'eventSlug'>): string | null => {
+const buildKalshiUrl = (market: Pick<Market, 'seriesSlug' | 'eventSlug' | 'marketSlug'>): string | null => {
+  const seriesSlug = deriveKalshiSeriesSlug(market);
+  if (!seriesSlug) return null;
+  return `https://kalshi.com/markets/${seriesSlug}`;
+};
+
+export const buildMarketUrl = (market: Pick<Market, 'platform' | 'marketSlug' | 'eventSlug' | 'seriesSlug'>): string | null => {
   if (market.platform === 'polymarket') {
     return buildPolymarketUrl(market);
   }
@@ -33,6 +30,9 @@ export const buildMarketUrl = (market: Pick<Market, 'platform' | 'marketSlug' | 
   return null;
 };
 
-export const buildOutcomeTradeUrl = (market: Pick<Market, 'market_url' | 'platform'>, _side: 'yes' | 'no'): string => {
-  return market.market_url;
+export const buildOutcomeTradeUrl = (
+  market: Pick<Market, 'market_url' | 'platform' | 'marketSlug' | 'eventSlug' | 'seriesSlug'>,
+  _side: 'yes' | 'no',
+): string => {
+  return buildMarketUrl(market) || market.market_url;
 };
