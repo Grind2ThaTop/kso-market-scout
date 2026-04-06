@@ -1,7 +1,9 @@
-import { FlaskConical, SlidersHorizontal, BarChart3, Target, TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react';
+import { FlaskConical, SlidersHorizontal, BarChart3, Target, TrendingUp, TrendingDown, AlertTriangle, ExternalLink } from 'lucide-react';
 import { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { useMarketScanner } from '@/hooks/useMarketScanner';
 import { DEMO_STRATEGIES, DEMO_BACKTESTS } from '@/data/demoData';
+import { buildOutcomeTradeUrl } from '@/lib/marketUrlBuilder';
 
 const fmtPct = (n: number) => `${(n * 100).toFixed(1)}%`;
 const fmtC = (n: number) => `${(n * 100).toFixed(0)}¢`;
