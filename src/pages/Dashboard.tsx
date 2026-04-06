@@ -186,14 +186,14 @@ const Dashboard = () => {
   );
 
   return (
-    <div className="flex-1 overflow-auto p-4 space-y-4">
+    <div className="flex-1 overflow-auto p-3 md:p-4 space-y-3 md:space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-bold flex items-center gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <h1 className="text-base md:text-lg font-bold flex items-center gap-2">
           <Zap className="w-5 h-5 text-primary" /> Live Scanner
         </h1>
-        <div className="flex items-center gap-3">
-          <button onClick={() => refetch()} disabled={isFetching} className="px-3 py-1 bg-primary text-primary-foreground rounded text-xs font-bold hover:opacity-90 transition disabled:opacity-50">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={() => refetch()} disabled={isFetching} className="px-3 py-1.5 bg-primary text-primary-foreground rounded text-xs font-bold hover:opacity-90 transition disabled:opacity-50">
             {isFetching ? 'Scanning…' : '⚡ Scan Now'}
           </button>
           <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${freshnessColors[freshness]}`}>{freshness}</span>
@@ -218,22 +218,22 @@ const Dashboard = () => {
       ) : null}
 
       {/* Stats grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+      <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-2 md:gap-3">
         {[
-          { label: 'Active Markets', value: markets.length.toString(), icon: Activity, color: 'text-foreground' },
-          { label: 'YES Signals', value: yesSignals.toString(), icon: TrendingUp, color: 'text-profit' },
-          { label: 'NO Signals', value: noSignals.toString(), icon: TrendingDown, color: 'text-loss' },
+          { label: 'Markets', value: markets.length.toString(), icon: Activity, color: 'text-foreground' },
+          { label: 'YES', value: yesSignals.toString(), icon: TrendingUp, color: 'text-profit' },
+          { label: 'NO', value: noSignals.toString(), icon: TrendingDown, color: 'text-loss' },
           { label: 'Avg Edge', value: fmtC(avgEdge), icon: DollarSign, color: 'text-profit' },
-          { label: 'Daily Target', value: fmt(remaining), icon: Target, color: 'text-primary' },
+          { label: 'Target', value: fmt(remaining), icon: Target, color: 'text-primary' },
           { label: 'Max Loss', value: fmt(scannerConfig.profile.maxDailyLoss), icon: AlertTriangle, color: 'text-loss' },
           { label: 'Est. Trades', value: Number.isFinite(tradesNeeded) ? tradesNeeded.toString() : '—', icon: Clock, color: 'text-muted-foreground' },
         ].map(({ label, value, icon: Icon, color }) => (
-          <div key={label} className="glass-card border border-border rounded-lg p-3 interactive-lift">
-            <div className="flex items-center gap-1.5 mb-1">
-              <Icon className={`w-3.5 h-3.5 ${color}`} />
-              <span className="text-[10px] text-muted-foreground">{label}</span>
+          <div key={label} className="glass-card border border-border rounded-lg p-2 md:p-3 interactive-lift">
+            <div className="flex items-center gap-1 mb-0.5 md:mb-1">
+              <Icon className={`w-3 h-3 md:w-3.5 md:h-3.5 ${color}`} />
+              <span className="text-[9px] md:text-[10px] text-muted-foreground truncate">{label}</span>
             </div>
-            <span className={`text-lg font-bold font-mono ${color}`}>{value}</span>
+            <span className={`text-sm md:text-lg font-bold font-mono ${color}`}>{value}</span>
           </div>
         ))}
       </div>
@@ -302,13 +302,59 @@ const Dashboard = () => {
         ))}
       </div>
 
-      {/* Main signals table */}
+      {/* Main signals - card layout on mobile, table on desktop */}
       <div className="glass-card border border-border rounded-lg">
-        <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+        <div className="px-3 md:px-4 py-2.5 md:py-3 border-b border-border flex items-center justify-between">
           <h2 className="text-sm font-semibold">Signals ({sortedSignals.length})</h2>
-          <span className="text-[10px] text-muted-foreground">Click headers to sort · Click market to drill down</span>
+          <span className="text-[10px] text-muted-foreground hidden md:inline">Click headers to sort · Click market to drill down</span>
         </div>
-        <div className="overflow-x-auto">
+
+        {/* Mobile cards */}
+        <div className="md:hidden divide-y divide-border/50">
+          {sortedSignals.length === 0 && (
+            <div className="px-3 py-8 text-center text-muted-foreground text-sm">No signals match current filters.</div>
+          )}
+          {sortedSignals.map(sig => {
+            const mkt = markets.find(m => m.id === sig.marketId);
+            const qt = quotes.find(q => q.marketId === sig.marketId);
+            if (!mkt || !qt) return null;
+            return (
+              <Link key={sig.id} to={`/market/${sig.marketId}`} className="block p-3 hover:bg-surface-2 transition-colors active:bg-surface-2">
+                <div className="flex items-start justify-between gap-2 mb-1.5">
+                  <div className={`flex items-center gap-1 font-bold text-xs ${directionColor(sig.direction)}`}>
+                    {directionIcon(sig.direction)}
+                    <span>{sig.direction}</span>
+                    <span className="ml-1 px-1.5 py-0.5 bg-surface-2 rounded text-[9px] text-muted-foreground font-normal uppercase">{mkt.platform === 'kalshi' ? 'KAL' : 'PM'}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10px]">
+                    <span className={`font-bold ${sig.score >= 70 ? 'text-profit' : sig.score >= 50 ? 'text-warning' : 'text-muted-foreground'}`}>{sig.score}pt</span>
+                    <span className="text-muted-foreground">{sig.confidence}%</span>
+                  </div>
+                </div>
+                <p className="text-xs font-medium text-foreground truncate mb-1.5">{mkt.title}</p>
+                <div className="flex items-center justify-between text-[10px] font-mono">
+                  <span>
+                    <span className="text-profit">{fmtPct(mkt.impliedProbYes)}</span>
+                    <span className="text-muted-foreground">/</span>
+                    <span className="text-loss">{fmtPct(mkt.impliedProbNo)}</span>
+                    <span className="text-muted-foreground ml-1">spread {fmtC(qt.spread)}</span>
+                  </span>
+                  <span className="text-muted-foreground">{sig.timeToExpiry}</span>
+                </div>
+                <div className="flex items-center justify-between text-[10px] font-mono mt-1">
+                  <span>
+                    {(sig.entryZone[0] * 100).toFixed(0)}¢→{(sig.targetPrice * 100).toFixed(0)}¢
+                    <span className="text-loss ml-1">✕{(sig.invalidationPrice * 100).toFixed(0)}¢</span>
+                  </span>
+                  <span className={sig.riskReward >= 1.5 ? 'text-profit' : 'text-muted-foreground'}>R:R {sig.riskReward.toFixed(1)}</span>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+
+        {/* Desktop table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-border text-muted-foreground">
@@ -438,17 +484,19 @@ const Dashboard = () => {
             </div>
 
             {/* Summary totals */}
-            <div className="grid grid-cols-3 gap-3 p-4 border-b border-border">
+            <div className="grid grid-cols-3 gap-2 md:gap-3 p-3 md:p-4 border-b border-border">
               {totals.map(t => (
-                <div key={t.stake} className="bg-surface-2 rounded-lg p-3 text-center">
-                  <div className="text-[10px] text-muted-foreground mb-1">@ ${t.stake}/trade</div>
-                  <div className={`text-xl font-bold font-mono ${t.totalNet >= 0 ? 'text-profit' : 'text-loss'}`}>
+                <div key={t.stake} className="bg-surface-2 rounded-lg p-2 md:p-3 text-center">
+                  <div className="text-[9px] md:text-[10px] text-muted-foreground mb-0.5 md:mb-1">@ ${t.stake}/trade</div>
+                  <div className={`text-base md:text-xl font-bold font-mono ${t.totalNet >= 0 ? 'text-profit' : 'text-loss'}`}>
                     ${t.totalNet.toFixed(2)}
                   </div>
-                  <div className="text-[10px] text-muted-foreground mt-1">
+                  <div className="text-[8px] md:text-[10px] text-muted-foreground mt-0.5 md:mt-1">
                     ROI: <span className={t.roi >= 0 ? 'text-profit' : 'text-loss'}>{t.roi.toFixed(1)}%</span>
-                    {' · '}Fees: <span className="text-loss">${t.totalFees.toFixed(2)}</span>
-                    {' · '}Slip: <span className="text-loss">${t.totalSlip.toFixed(2)}</span>
+                    <span className="hidden sm:inline">
+                      {' · '}Fees: <span className="text-loss">${t.totalFees.toFixed(2)}</span>
+                      {' · '}Slip: <span className="text-loss">${t.totalSlip.toFixed(2)}</span>
+                    </span>
                   </div>
                 </div>
               ))}
