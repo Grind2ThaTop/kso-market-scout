@@ -23,6 +23,9 @@ async function fetchPolymarketMarkets() {
     `${GAMMA_API}/markets?limit=100&active=true&closed=false&archived=false&order=volume&ascending=false&tag=mlb`,
     `${GAMMA_API}/markets?limit=100&active=true&closed=false&archived=false&order=volume&ascending=false&tag=soccer`,
     `${GAMMA_API}/markets?limit=100&active=true&closed=false&archived=false&order=volume&ascending=false&tag=mma`,
+    `${GAMMA_API}/markets?limit=100&active=true&closed=false&archived=false&order=volume&ascending=false&tag=nhl`,
+    `${GAMMA_API}/markets?limit=100&active=true&closed=false&archived=false&order=volume&ascending=false&tag=tennis`,
+    `${GAMMA_API}/markets?limit=100&active=true&closed=false&archived=false&order=volume&ascending=false&tag=cricket`,
   ];
 
   const allMarkets: any[] = [];
@@ -91,14 +94,15 @@ async function fetchPolymarketMarkets() {
 
 /* ─── Kalshi ─── */
 
+const parseDollars = (v: any) => Number(String(v ?? "0").replace(/[^0-9.\-]/g, "")) || 0;
+
 async function fetchKalshiMarkets() {
   try {
     const allMarkets: any[] = [];
     let cursor = "";
     let pages = 0;
-    const MAX_PAGES = 5; // up to 500 events
+    const MAX_PAGES = 10; // up to 1000 events to reach short-term ones
 
-    // Paginate through events endpoint to get ALL markets
     while (pages < MAX_PAGES) {
       const cursorParam = cursor ? `&cursor=${cursor}` : "";
       const res = await fetch(
@@ -130,14 +134,13 @@ async function fetchKalshiMarkets() {
 
     console.log(`[scan] Kalshi raw markets from events: ${allMarkets.length} (${pages + 1} pages)`);
 
-    const parseDollars = (v: any) => Number(String(v ?? "0").replace(/[^0-9.\-]/g, "")) || 0;
-
     const seen = new Set<string>();
     return allMarkets.filter((m: any) => {
       const ticker = m.ticker ?? "";
       if (seen.has(ticker)) return false;
       seen.add(ticker);
       if (ticker.startsWith("KXMVE")) return false;
+      if (m.status === "finalized" || m.status === "closed") return false;
       const yesBid = parseDollars(m.yes_bid_dollars);
       const yesAsk = parseDollars(m.yes_ask_dollars);
       if (yesBid === 0 && yesAsk === 0) return false;
