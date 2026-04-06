@@ -345,7 +345,8 @@ const AutoTradePage = () => {
   const livePnl = livePositions.reduce((s, p) => s + (p.pnl ?? 0), 0);
   const totalPnl = positions.reduce((s, p) => s + (p.pnl ?? 0), 0);
   const totalPortfolio = (exchangeBalance.available ?? 0) + (exchangeBalance.total ?? 0) + (polyBalance.available ?? 0);
-  const paperBankrollCurrent = localSettings.paper_bankroll_initial + paperPnl;
+  const paperExposure = paperPositions.filter(p => p.status === 'open').reduce((s, p) => s + p.size, 0);
+  const paperBankrollCurrent = localSettings.paper_bankroll_initial - paperExposure + paperPnl;
   const lastRun = engineRuns[0];
   const engineActive = settings?.enabled && !settings?.kill_switch;
 
