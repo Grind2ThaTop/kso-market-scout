@@ -27,6 +27,8 @@ export type Database = {
           max_position_size: number
           min_confidence: number
           min_signal_score: number
+          paper_bankroll: number
+          paper_bankroll_initial: number
           paper_mode: boolean
           updated_at: string
           user_id: string
@@ -43,6 +45,8 @@ export type Database = {
           max_position_size?: number
           min_confidence?: number
           min_signal_score?: number
+          paper_bankroll?: number
+          paper_bankroll_initial?: number
           paper_mode?: boolean
           updated_at?: string
           user_id: string
@@ -59,6 +63,8 @@ export type Database = {
           max_position_size?: number
           min_confidence?: number
           min_signal_score?: number
+          paper_bankroll?: number
+          paper_bankroll_initial?: number
           paper_mode?: boolean
           updated_at?: string
           user_id?: string

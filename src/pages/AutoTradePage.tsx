@@ -22,6 +22,8 @@ interface AutoTradeSettings {
   cooldown_seconds: number;
   allowed_providers: string[];
   paper_mode: boolean;
+  paper_bankroll: number;
+  paper_bankroll_initial: number;
 }
 
 interface Position {
@@ -98,6 +100,8 @@ const defaultSettings: Omit<AutoTradeSettings, 'id' | 'user_id'> = {
   cooldown_seconds: 300,
   allowed_providers: ['kalshi', 'polymarket'],
   paper_mode: true,
+  paper_bankroll: 1000,
+  paper_bankroll_initial: 1000,
 };
 
 const EXCHANGE_BALANCE_STORAGE_KEY = 'kso_exchange_balance';
@@ -196,6 +200,8 @@ const AutoTradePage = () => {
         max_open_positions: settings.max_open_positions, min_signal_score: settings.min_signal_score,
         min_confidence: settings.min_confidence, cooldown_seconds: settings.cooldown_seconds,
         allowed_providers: settings.allowed_providers, paper_mode: settings.paper_mode,
+        paper_bankroll: (settings as any).paper_bankroll ?? 1000,
+        paper_bankroll_initial: (settings as any).paper_bankroll_initial ?? 1000,
       });
     }
   }, [settings]);
@@ -331,8 +337,13 @@ const AutoTradePage = () => {
   });
 
   const openPositions = positions.filter(p => p.status === 'open');
+  const paperPositions = positions.filter(p => p.paper_mode);
+  const livePositions = positions.filter(p => !p.paper_mode);
+  const paperPnl = paperPositions.reduce((s, p) => s + (p.pnl ?? 0), 0);
+  const livePnl = livePositions.reduce((s, p) => s + (p.pnl ?? 0), 0);
   const totalPnl = positions.reduce((s, p) => s + (p.pnl ?? 0), 0);
   const totalPortfolio = (exchangeBalance.available ?? 0) + (exchangeBalance.total ?? 0) + (polyBalance.available ?? 0);
+  const paperBankrollCurrent = localSettings.paper_bankroll_initial + paperPnl;
   const lastRun = engineRuns[0];
   const engineActive = settings?.enabled && !settings?.kill_switch;
 
@@ -441,56 +452,97 @@ const AutoTradePage = () => {
         </CardContent>
       </Card>
 
-      {/* Total Portfolio */}
-      {(exchangeBalance.available !== null || polyBalance.available !== null) && (
-        <Card className="border-accent/30 bg-accent/5">
+      {/* ─── BANKROLL MANAGER ─── */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {/* Paper Bankroll */}
+        <Card className="border-warning/30 bg-warning/5">
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-2">
-              <DollarSign className="w-5 h-5 text-accent" />
-              <span className="text-sm font-bold">Total Portfolio</span>
+              <DollarSign className="w-4 h-4 text-warning" />
+              <span className="text-sm font-bold">Paper Bankroll</span>
+              <Badge variant="outline" className="text-warning border-warning/40 text-[9px] ml-auto">SIM</Badge>
             </div>
-            <p className="text-2xl font-bold font-mono text-foreground">${totalPortfolio.toFixed(2)}</p>
-            <p className="text-[10px] text-muted-foreground mt-1">Combined across all connected exchanges</p>
+            <p className={`text-2xl font-bold font-mono ${paperBankrollCurrent >= localSettings.paper_bankroll_initial ? 'text-profit' : 'text-loss'}`}>
+              ${paperBankrollCurrent.toFixed(2)}
+            </p>
+            <div className="flex items-center justify-between mt-2 text-[10px] text-muted-foreground">
+              <span>Started: ${localSettings.paper_bankroll_initial.toFixed(0)}</span>
+              <span className={`font-mono font-bold ${paperPnl >= 0 ? 'text-profit' : 'text-loss'}`}>
+                {paperPnl >= 0 ? '+' : ''}${paperPnl.toFixed(2)} ({localSettings.paper_bankroll_initial > 0 ? ((paperPnl / localSettings.paper_bankroll_initial) * 100).toFixed(1) : '0'}%)
+              </span>
+            </div>
+            <div className="flex items-center gap-2 mt-2 text-[10px]">
+              <span className="text-muted-foreground">Open: {paperPositions.filter(p => p.status === 'open').length}</span>
+              <span className="text-muted-foreground">Closed: {paperPositions.filter(p => p.status !== 'open').length}</span>
+            </div>
           </CardContent>
         </Card>
-      )}
 
-      {/* Exchange Accounts */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <Card className="border-primary/20">
-          <CardContent className="p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2"><Wallet className="w-4 h-4 text-primary" /><span className="text-sm font-semibold">Kalshi</span></div>
-              {exchangeBalance.lastSynced && <span className="text-[10px] text-muted-foreground">Synced: {exchangeBalance.lastSynced}</span>}
+        {/* Live Exchange Balances */}
+        <Card className="border-profit/30 bg-profit/5">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Wallet className="w-4 h-4 text-profit" />
+              <span className="text-sm font-bold">Kalshi</span>
+              <Badge variant="outline" className="text-profit border-profit/40 text-[9px] ml-auto">LIVE</Badge>
             </div>
             {exchangeBalance.available !== null ? (
-              <div className="grid grid-cols-2 gap-2">
-                <div><p className="text-[10px] text-muted-foreground uppercase tracking-wide">Available</p><p className="text-lg font-bold text-foreground">${exchangeBalance.available.toFixed(2)}</p></div>
-                <div><p className="text-[10px] text-muted-foreground uppercase tracking-wide">Total</p><p className="text-lg font-bold text-foreground">${exchangeBalance.total?.toFixed(2) ?? '—'}</p></div>
-                <div><p className="text-[10px] text-muted-foreground uppercase tracking-wide">Positions</p><p className="text-sm font-semibold">{exchangeBalance.livePositions}</p></div>
-                <div><p className="text-[10px] text-muted-foreground uppercase tracking-wide">Orders</p><p className="text-sm font-semibold">{exchangeBalance.liveOrders}</p></div>
-              </div>
-            ) : <p className="text-xs text-muted-foreground">Tap <strong>Sync</strong> to pull live data.</p>}
-            {exchangeBalance.error && <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">{exchangeBalance.error}</div>}
+              <>
+                <p className="text-2xl font-bold font-mono text-foreground">${exchangeBalance.available.toFixed(2)}</p>
+                <div className="flex items-center justify-between mt-2 text-[10px] text-muted-foreground">
+                  <span>Total: ${exchangeBalance.total?.toFixed(2) ?? '—'}</span>
+                  <span>{exchangeBalance.livePositions} pos · {exchangeBalance.liveOrders} orders</span>
+                </div>
+                {exchangeBalance.lastSynced && <p className="text-[9px] text-muted-foreground mt-1">Synced: {exchangeBalance.lastSynced}</p>}
+              </>
+            ) : (
+              <p className="text-xs text-muted-foreground mt-2">Tap <strong>Sync</strong> to connect</p>
+            )}
+            {exchangeBalance.error && <p className="text-[10px] text-loss mt-1">{exchangeBalance.error}</p>}
           </CardContent>
         </Card>
-        <Card className="border-primary/20">
-          <CardContent className="p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2"><Wallet className="w-4 h-4 text-primary" /><span className="text-sm font-semibold">Polymarket</span></div>
-              {polyBalance.lastSynced && <span className="text-[10px] text-muted-foreground">Synced: {polyBalance.lastSynced}</span>}
+
+        <Card className="border-profit/30 bg-profit/5">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Wallet className="w-4 h-4 text-profit" />
+              <span className="text-sm font-bold">Polymarket</span>
+              <Badge variant="outline" className="text-profit border-profit/40 text-[9px] ml-auto">LIVE</Badge>
             </div>
             {polyBalance.available !== null ? (
-              <div className="grid grid-cols-2 gap-2">
-                <div><p className="text-[10px] text-muted-foreground uppercase tracking-wide">Balance</p><p className="text-lg font-bold text-foreground">${polyBalance.available.toFixed(2)}</p></div>
-                <div><p className="text-[10px] text-muted-foreground uppercase tracking-wide">Positions</p><p className="text-sm font-semibold">{polyBalance.livePositions}</p></div>
-                <div><p className="text-[10px] text-muted-foreground uppercase tracking-wide">Open Orders</p><p className="text-sm font-semibold">{polyBalance.liveOrders}</p></div>
-              </div>
-            ) : <p className="text-xs text-muted-foreground">Tap <strong>Sync</strong> to pull live Polymarket data.</p>}
-            {polyBalance.error && <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">{polyBalance.error}</div>}
+              <>
+                <p className="text-2xl font-bold font-mono text-foreground">${polyBalance.available.toFixed(2)}</p>
+                <div className="flex items-center justify-between mt-2 text-[10px] text-muted-foreground">
+                  <span>{polyBalance.livePositions} pos · {polyBalance.liveOrders} orders</span>
+                </div>
+                {polyBalance.lastSynced && <p className="text-[9px] text-muted-foreground mt-1">Synced: {polyBalance.lastSynced}</p>}
+              </>
+            ) : (
+              <p className="text-xs text-muted-foreground mt-2">Tap <strong>Sync</strong> to connect</p>
+            )}
+            {polyBalance.error && <p className="text-[10px] text-loss mt-1">{polyBalance.error}</p>}
           </CardContent>
         </Card>
       </div>
+
+      {/* Total Portfolio */}
+      <Card className="border-accent/30 bg-accent/5">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <DollarSign className="w-5 h-5 text-accent" />
+              <span className="text-sm font-bold">Total Live Portfolio</span>
+            </div>
+            <div className="text-right">
+              <p className="text-2xl font-bold font-mono text-foreground">${totalPortfolio.toFixed(2)}</p>
+              <p className={`text-xs font-mono font-bold ${livePnl >= 0 ? 'text-profit' : 'text-loss'}`}>
+                Live P&L: {livePnl >= 0 ? '+' : ''}${livePnl.toFixed(2)}
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
 
       {/* Kill Switch */}
       <Card className="border-loss/30">
