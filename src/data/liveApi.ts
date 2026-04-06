@@ -341,11 +341,14 @@ const normalizeRows = (rows: unknown[], fetchedAt: string) => {
         row.eventSlug, row.event, row.event_ticker, row.series_ticker,
         sourceRow.eventSlug, sourceRow.event, sourceRow.event_ticker, sourceRow.series_ticker,
       );
+      const seriesSlug = pickFirstString(
+        row.seriesSlug, row.series_ticker,
+        sourceRow.seriesSlug, sourceRow.series_ticker,
+      );
 
       const yesPrice = (quote.bestYesBid + quote.bestYesAsk) / 2;
       const noPrice = 1 - yesPrice;
 
-      // Price changes - try to extract from source, default to 0
       const priceChange1h = pickFirstNumber(row.oneHourPriceChange, sourceRow.oneHourPriceChange) ?? 0;
       const priceChange24h = pickFirstNumber(row.oneDayPriceChange, sourceRow.oneDayPriceChange) ?? 0;
 
@@ -356,11 +359,12 @@ const normalizeRows = (rows: unknown[], fetchedAt: string) => {
         platform,
         marketSlug,
         eventSlug,
+        seriesSlug,
         category: normalizeCategory(row.category ?? row.group ?? row.tag ?? sourceRow.category ?? sourceRow.group ?? sourceRow.tag),
         eventEnd: eventEnd || fetchedAt,
         settlementRules: pickFirstString(row.rules, row.description, sourceRow.rules, sourceRow.description, row.rules_primary, sourceRow.rules_primary, 'See exchange rules.'),
         liquidityScore,
-        market_url: resolveMarketUrl(row, sourceRow, platform, marketSlug, eventSlug),
+        market_url: resolveMarketUrl(row, sourceRow, platform, marketSlug, eventSlug, seriesSlug),
         volume24h,
         lastTradeTime,
         lastUpdated,
