@@ -170,6 +170,40 @@ async function fetchKalshiMarkets() {
     }
     console.log(`[scan] Kalshi sports series fetch: ${sportsCount} markets`);
 
+    // 3) Direct /markets fetch for markets closing TODAY
+    const now = new Date();
+    const startOfDay = Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000);
+    const endOfDay = startOfDay + 86400 - 1;
+    // Also fetch markets closing within next 7 days for broader coverage
+    const endOf7Days = startOfDay + 7 * 86400;
+
+    const directFetches = [
+      // Markets closing today
+      `${KALSHI_BASE}/markets?status=open&min_close_ts=${startOfDay}&max_close_ts=${endOfDay}&limit=1000`,
+      // Markets closing within 7 days
+      `${KALSHI_BASE}/markets?status=open&min_close_ts=${endOfDay + 1}&max_close_ts=${endOf7Days}&limit=1000`,
+      // Sports category broad fetch
+      `${KALSHI_BASE}/markets?status=open&limit=1000&category=Sports`,
+      // High-volume catch-all
+      `${KALSHI_BASE}/markets?status=open&limit=200`,
+    ];
+
+    const directResults = await Promise.all(directFetches.map(async (url) => {
+      try {
+        const res = await fetch(url, { headers: { "Accept": "application/json" } });
+        if (!res.ok) { console.log(`[scan] Kalshi /markets fetch failed: ${res.status} for ${url}`); return []; }
+        const data = await res.json();
+        return data.markets ?? [];
+      } catch (e) { console.error(`[scan] Kalshi /markets error:`, e); return []; }
+    }));
+
+    let directCount = 0;
+    for (const batch of directResults) {
+      directCount += batch.length;
+      allMarkets.push(...batch);
+    }
+    console.log(`[scan] Kalshi direct /markets fetch: ${directCount} markets (today + 7d + sports + high-vol)`);
+
     const seen = new Set<string>();
     return allMarkets.filter((m: any) => {
       const ticker = m.ticker ?? "";
