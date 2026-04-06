@@ -1,10 +1,23 @@
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { TrendingUp, TrendingDown, Target, AlertTriangle, DollarSign, Activity, WifiOff, ArrowUpRight, ArrowDownRight, MinusCircle, Zap, Clock, Filter } from 'lucide-react';
+import {
+  TrendingUp,
+  TrendingDown,
+  AlertTriangle,
+  DollarSign,
+  Activity,
+  WifiOff,
+  ArrowUpRight,
+  ArrowDownRight,
+  MinusCircle,
+  Zap,
+  Clock,
+  Filter,
+} from 'lucide-react';
 import { useMarketScanner } from '@/hooks/useMarketScanner';
 import { scannerConfig } from '@/data/liveApi';
 import { buildOutcomeTradeUrl } from '@/lib/marketUrlBuilder';
-import { getFreshnessStatus, freshnessColors, SignalDirection } from '@/data/types';
+import { getFreshnessStatus, freshnessColors, SignalDirection, Market } from '@/data/types';
 
 const fmt = (n: number) => `$${n.toFixed(0)}`;
 const fmtC = (n: number) => `${(n * 100).toFixed(1)}¢`;
@@ -16,6 +29,7 @@ type FilterCategory = 'all' | 'sports' | 'politics' | 'economics' | 'weather' | 
 type FilterExchange = 'all' | 'kalshi' | 'polymarket';
 type FilterVolume = 'all' | '1k' | '10k' | '100k';
 type FilterExpiry = 'all' | '1h' | '24h' | '7d' | '30d';
+type ViewMode = 'markets' | 'signals';
 
 const directionIcon = (d: SignalDirection) => {
   if (d === 'YES') return <ArrowUpRight className="w-3.5 h-3.5" />;
@@ -40,6 +54,20 @@ const timeToHours = (value: string) => {
   return match[2].toLowerCase() === 'd' ? amount * 24 : amount;
 };
 
+const getMarketHoursToExpiry = (eventEnd: string) => {
+  const hours = (new Date(eventEnd).getTime() - Date.now()) / 3_600_000;
+  return Number.isFinite(hours) ? hours : Number.POSITIVE_INFINITY;
+};
+
+const getMarketExpiryLabel = (eventEnd: string) => {
+  const hours = getMarketHoursToExpiry(eventEnd);
+  if (!Number.isFinite(hours)) return 'unknown';
+  if (hours <= 0) return 'expired';
+  if (hours < 1) return `${Math.max(1, Math.round(hours * 60))}m`;
+  if (hours < 24) return `${Math.round(hours)}h`;
+  return `${Math.round(hours / 24)}d`;
+};
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const { data, isLoading, isFetching, isError, error, refetch } = useMarketScanner();
@@ -50,8 +78,8 @@ const Dashboard = () => {
   const [filterExchange, setFilterExchange] = useState<FilterExchange>('all');
   const [filterVolume, setFilterVolume] = useState<FilterVolume>('all');
   const [filterExpiry, setFilterExpiry] = useState<FilterExpiry>('all');
+  const [viewMode, setViewMode] = useState<ViewMode>('markets');
 
-  // All hooks MUST be above early returns
   const signals = data?.signals ?? [];
   const markets = data?.markets ?? [];
   const quotes = data?.quotes ?? [];
@@ -74,8 +102,7 @@ const Dashboard = () => {
 
     if (filterExpiry !== 'all') {
       filtered = filtered.filter((market) => {
-        const hrs = (new Date(market.eventEnd).getTime() - Date.now()) / 3_600_000;
-        if (!Number.isFinite(hrs)) return false;
+        const hrs = getMarketHoursToExpiry(market.eventEnd);
         if (filterExpiry === '1h') return hrs > 0 && hrs <= 1;
         if (filterExpiry === '24h') return hrs > 0 && hrs <= 24;
         if (filterExpiry === '7d') return hrs > 0 && hrs <= 168;
@@ -86,44 +113,49 @@ const Dashboard = () => {
     return filtered;
   }, [markets, filterCategory, filterExchange, filterVolume, filterExpiry]);
 
-
   const actionableSignals = useMemo(() => {
     let filtered = signals.filter((signal) => {
       if (signal.direction === 'PASS') return false;
-      const market = markets.find(m => m.id === signal.marketId);
+      const market = markets.find((m) => m.id === signal.marketId);
       return market?.market_url;
     });
+
     if (filterDirection !== 'ALL') {
-      filtered = filtered.filter(s => s.direction === filterDirection);
+      filtered = filtered.filter((signal) => signal.direction === filterDirection);
     }
+
     if (filterCategory !== 'all') {
-      filtered = filtered.filter(s => {
-        const market = markets.find(m => m.id === s.marketId);
+      filtered = filtered.filter((signal) => {
+        const market = markets.find((m) => m.id === signal.marketId);
         return market?.category === filterCategory;
       });
     }
+
     if (filterExchange !== 'all') {
-      filtered = filtered.filter(s => {
-        const market = markets.find(m => m.id === s.marketId);
+      filtered = filtered.filter((signal) => {
+        const market = markets.find((m) => m.id === signal.marketId);
         return market?.platform === filterExchange;
       });
     }
+
     if (filterVolume !== 'all') {
       const minVol = filterVolume === '1k' ? 1000 : filterVolume === '10k' ? 10000 : 100000;
-      filtered = filtered.filter(s => {
-        const market = markets.find(m => m.id === s.marketId);
+      filtered = filtered.filter((signal) => {
+        const market = markets.find((m) => m.id === signal.marketId);
         return (market?.volume24h ?? 0) >= minVol;
       });
     }
+
     if (filterExpiry !== 'all') {
-      filtered = filtered.filter(s => {
-        const hrs = timeToHours(s.timeToExpiry);
+      filtered = filtered.filter((signal) => {
+        const hrs = timeToHours(signal.timeToExpiry);
         if (filterExpiry === '1h') return hrs <= 1;
         if (filterExpiry === '24h') return hrs <= 24;
         if (filterExpiry === '7d') return hrs <= 168;
         return hrs <= 720;
       });
     }
+
     return filtered;
   }, [signals, markets, filterDirection, filterCategory, filterExchange, filterVolume, filterExpiry]);
 
@@ -154,17 +186,47 @@ const Dashboard = () => {
     return copy;
   }, [actionableSignals, markets, quotes, sortDirection, sortKey]);
 
-  const yesSignals = useMemo(() => actionableSignals.filter(s => s.direction === 'YES').length, [actionableSignals]);
-  const noSignals = useMemo(() => actionableSignals.filter(s => s.direction === 'NO').length, [actionableSignals]);
+  const sortedMarkets = useMemo(() => {
+    const copy = [...rawFilteredMarkets];
+    copy.sort((a, b) => {
+      const quoteA = quotes.find((q) => q.marketId === a.id);
+      const quoteB = quotes.find((q) => q.marketId === b.id);
+
+      let result = 0;
+      switch (sortKey) {
+        case 'market': result = a.title.localeCompare(b.title); break;
+        case 'platform': result = a.platform.localeCompare(b.platform); break;
+        case 'yesPrice': result = (a.yesPrice ?? 0) - (b.yesPrice ?? 0); break;
+        case 'spread': result = (quoteA?.spread ?? 0) - (quoteB?.spread ?? 0); break;
+        case 'time': result = getMarketHoursToExpiry(a.eventEnd) - getMarketHoursToExpiry(b.eventEnd); break;
+        case 'volume': result = (a.volume24h ?? 0) - (b.volume24h ?? 0); break;
+        default: result = (a.volume24h ?? 0) - (b.volume24h ?? 0); break;
+      }
+      return sortDirection === 'asc' ? result : -result;
+    });
+    return copy;
+  }, [rawFilteredMarkets, quotes, sortDirection, sortKey]);
+
+  const yesSignals = useMemo(() => actionableSignals.filter((s) => s.direction === 'YES').length, [actionableSignals]);
+  const noSignals = useMemo(() => actionableSignals.filter((s) => s.direction === 'NO').length, [actionableSignals]);
   const avgEdge = useMemo(() => {
-    const active = actionableSignals.filter(s => s.action !== 'wait');
+    const active = actionableSignals.filter((s) => s.action !== 'wait');
     return active.reduce((sum, sig) => sum + sig.expectedNetEdge, 0) / Math.max(1, active.length);
   }, [actionableSignals]);
 
-  const hasActiveFilters = filterDirection !== 'ALL' || filterCategory !== 'all' || filterExchange !== 'all' || filterVolume !== 'all' || filterExpiry !== 'all';
-  const activeFilterLabel = [
+  const hasSignalFilters = filterDirection !== 'ALL' || filterCategory !== 'all' || filterExchange !== 'all' || filterVolume !== 'all' || filterExpiry !== 'all';
+  const hasMarketFilters = filterCategory !== 'all' || filterExchange !== 'all' || filterVolume !== 'all' || filterExpiry !== 'all';
+
+  const activeSignalFilterLabel = [
     filterExchange !== 'all' ? (filterExchange === 'kalshi' ? 'Kalshi' : 'Polymarket') : null,
     filterDirection !== 'ALL' ? filterDirection : null,
+    filterVolume !== 'all' ? `vol ≥ $${filterVolume}` : null,
+    filterExpiry !== 'all' ? `≤${filterExpiry}` : null,
+    filterCategory !== 'all' ? filterCategory : null,
+  ].filter(Boolean).join(' · ');
+
+  const activeMarketFilterLabel = [
+    filterExchange !== 'all' ? (filterExchange === 'kalshi' ? 'Kalshi' : 'Polymarket') : null,
     filterVolume !== 'all' ? `vol ≥ $${filterVolume}` : null,
     filterExpiry !== 'all' ? `≤${filterExpiry}` : null,
     filterCategory !== 'all' ? filterCategory : null,
@@ -220,7 +282,7 @@ const Dashboard = () => {
 
   const setSort = (key: SortKey) => {
     if (sortKey === key) {
-      setSortDirection((c) => (c === 'asc' ? 'desc' : 'asc'));
+      setSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'));
       return;
     }
     setSortKey(key);
@@ -233,9 +295,33 @@ const Dashboard = () => {
     </button>
   );
 
+  const renderMarketMobileCard = (market: Market) => {
+    const quote = quotes.find((q) => q.marketId === market.id);
+    return (
+      <Link key={market.id} to={`/market/${market.id}`} className="block p-3 hover:bg-surface-2 transition-colors active:bg-surface-2">
+        <div className="flex items-start justify-between gap-2 mb-1.5">
+          <div className="flex items-center gap-1.5 text-xs font-bold">
+            <span className="text-foreground uppercase">{market.platform === 'kalshi' ? 'KAL' : 'PM'}</span>
+            <span className="px-1.5 py-0.5 bg-surface-2 rounded text-[9px] text-muted-foreground capitalize font-normal">{market.category}</span>
+          </div>
+          <div className="text-[10px] text-muted-foreground">{getMarketExpiryLabel(market.eventEnd)}</div>
+        </div>
+        <p className="text-xs font-medium text-foreground truncate mb-1.5">{market.title}</p>
+        <div className="flex items-center justify-between text-[10px] font-mono">
+          <span>
+            <span className="text-profit">{fmtPct(market.impliedProbYes)}</span>
+            <span className="text-muted-foreground">/</span>
+            <span className="text-loss">{fmtPct(market.impliedProbNo)}</span>
+            <span className="text-muted-foreground ml-1">spread {fmtC(quote?.spread ?? 0)}</span>
+          </span>
+          <span className="text-muted-foreground">${market.volume24h >= 1000 ? `${(market.volume24h / 1000).toFixed(0)}k` : market.volume24h}</span>
+        </div>
+      </Link>
+    );
+  };
+
   return (
     <div className="flex-1 overflow-auto p-3 md:p-4 space-y-3 md:space-y-4">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <h1 className="text-base md:text-lg font-bold flex items-center gap-2">
           <Zap className="w-5 h-5 text-primary" /> Live Scanner
@@ -251,7 +337,6 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Source warnings */}
       {data?.source === 'demo' && (
         <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-xs text-warning flex items-center gap-2">
           <AlertTriangle className="w-4 h-4 shrink-0" />
@@ -265,7 +350,6 @@ const Dashboard = () => {
         </div>
       ) : null}
 
-      {/* Stats grid */}
       <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-2 md:gap-3">
         {[
           { label: 'Scanned', value: markets.length.toString(), icon: Activity, color: 'text-foreground' },
@@ -286,258 +370,374 @@ const Dashboard = () => {
         ))}
       </div>
 
-      {/* Filters */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 overflow-x-auto scrollbar-thin pb-1">
-        {/* Exchange */}
         <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
           <Filter className="w-3.5 h-3.5" />
           <span>Exchange:</span>
         </div>
-        {(['all', 'kalshi', 'polymarket'] as FilterExchange[]).map(e => (
-          <button key={e} onClick={() => setFilterExchange(e)}
-            className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-colors shrink-0 ${filterExchange === e ? 'bg-primary/20 text-primary' : 'bg-surface-2 text-muted-foreground hover:text-foreground'}`}>
-            {e === 'all' ? 'ALL' : e === 'kalshi' ? 'KAL' : 'PM'}
+        {(['all', 'kalshi', 'polymarket'] as FilterExchange[]).map((exchange) => (
+          <button
+            key={exchange}
+            onClick={() => setFilterExchange(exchange)}
+            className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-colors shrink-0 ${filterExchange === exchange ? 'bg-primary/20 text-primary' : 'bg-surface-2 text-muted-foreground hover:text-foreground'}`}
+          >
+            {exchange === 'all' ? 'ALL' : exchange === 'kalshi' ? 'KAL' : 'PM'}
           </button>
         ))}
 
         <span className="text-muted-foreground shrink-0">|</span>
 
-        {/* Direction */}
         <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
           <span>Direction:</span>
         </div>
-        {(['ALL', 'YES', 'NO'] as FilterDirection[]).map(d => (
-          <button key={d} onClick={() => setFilterDirection(d)}
-            className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-colors shrink-0 ${filterDirection === d
-              ? d === 'YES' ? 'bg-profit/20 text-profit' : d === 'NO' ? 'bg-loss/20 text-loss' : 'bg-primary/20 text-primary'
+        {(['ALL', 'YES', 'NO'] as FilterDirection[]).map((direction) => (
+          <button
+            key={direction}
+            onClick={() => setFilterDirection(direction)}
+            className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-colors shrink-0 ${filterDirection === direction
+              ? direction === 'YES'
+                ? 'bg-profit/20 text-profit'
+                : direction === 'NO'
+                  ? 'bg-loss/20 text-loss'
+                  : 'bg-primary/20 text-primary'
               : 'bg-surface-2 text-muted-foreground hover:text-foreground'
-            }`}>{d}</button>
+            }`}
+          >
+            {direction}
+          </button>
         ))}
 
         <span className="text-muted-foreground shrink-0">|</span>
 
-        {/* Volume */}
         <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
           <span>Vol:</span>
         </div>
-        {(['all', '1k', '10k', '100k'] as FilterVolume[]).map(v => (
-          <button key={v} onClick={() => setFilterVolume(v)}
-            className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-colors shrink-0 ${filterVolume === v ? 'bg-primary/20 text-primary' : 'bg-surface-2 text-muted-foreground hover:text-foreground'}`}>
-            {v === 'all' ? 'ALL' : `≥$${v}`}
+        {(['all', '1k', '10k', '100k'] as FilterVolume[]).map((volume) => (
+          <button
+            key={volume}
+            onClick={() => setFilterVolume(volume)}
+            className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-colors shrink-0 ${filterVolume === volume ? 'bg-primary/20 text-primary' : 'bg-surface-2 text-muted-foreground hover:text-foreground'}`}
+          >
+            {volume === 'all' ? 'ALL' : `≥$${volume}`}
           </button>
         ))}
 
         <span className="text-muted-foreground shrink-0">|</span>
 
-        {/* Expiry */}
         <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
           <span>Exp:</span>
         </div>
-        {(['all', '1h', '24h', '7d', '30d'] as FilterExpiry[]).map(t => (
-          <button key={t} onClick={() => setFilterExpiry(t)}
-            className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-colors shrink-0 ${filterExpiry === t ? 'bg-primary/20 text-primary' : 'bg-surface-2 text-muted-foreground hover:text-foreground'}`}>
-            {t === 'all' ? 'ALL' : `≤${t}`}
+        {(['all', '1h', '24h', '7d', '30d'] as FilterExpiry[]).map((expiry) => (
+          <button
+            key={expiry}
+            onClick={() => setFilterExpiry(expiry)}
+            className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-colors shrink-0 ${filterExpiry === expiry ? 'bg-primary/20 text-primary' : 'bg-surface-2 text-muted-foreground hover:text-foreground'}`}
+          >
+            {expiry === 'all' ? 'ALL' : `≤${expiry}`}
           </button>
         ))}
 
         <span className="text-muted-foreground shrink-0">|</span>
 
-        {/* Category */}
         <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">Category:</div>
-        {(['all', 'sports', 'politics', 'economics', 'crypto', 'tech', 'finance', 'weather', 'entertainment', 'science', 'health', 'legal', 'other'] as FilterCategory[]).map(c => (
-          <button key={c} onClick={() => setFilterCategory(c)}
-            className={`px-2 py-1 rounded text-[10px] capitalize transition-colors shrink-0 ${filterCategory === c ? 'bg-primary/20 text-primary font-bold' : 'bg-surface-2 text-muted-foreground hover:text-foreground'}`}>{c}</button>
+        {(['all', 'sports', 'politics', 'economics', 'crypto', 'tech', 'finance', 'weather', 'entertainment', 'science', 'health', 'legal', 'other'] as FilterCategory[]).map((category) => (
+          <button
+            key={category}
+            onClick={() => setFilterCategory(category)}
+            className={`px-2 py-1 rounded text-[10px] capitalize transition-colors shrink-0 ${filterCategory === category ? 'bg-primary/20 text-primary font-bold' : 'bg-surface-2 text-muted-foreground hover:text-foreground'}`}
+          >
+            {category}
+          </button>
         ))}
       </div>
 
-      {/* Main signals - card layout on mobile, table on desktop */}
+      {viewMode === 'markets' && filterDirection !== 'ALL' && (
+        <div className="text-[10px] text-muted-foreground">Direction filter only applies to the Signals view.</div>
+      )}
+
       <div className="glass-card border border-border rounded-lg">
-        <div className="px-3 md:px-4 py-2.5 md:py-3 border-b border-border flex items-center justify-between">
-          <h2 className="text-sm font-semibold">Signals ({sortedSignals.length})</h2>
-          <span className="text-[10px] text-muted-foreground hidden md:inline">Click headers to sort · Click market to drill down</span>
+        <div className="px-3 md:px-4 py-2.5 md:py-3 border-b border-border flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setViewMode('markets')}
+              className={`px-2.5 py-1 rounded-md text-xs font-semibold ${viewMode === 'markets' ? 'bg-primary/20 text-primary' : 'bg-surface-2 text-muted-foreground'}`}
+            >
+              All Markets ({sortedMarkets.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('signals')}
+              className={`px-2.5 py-1 rounded-md text-xs font-semibold ${viewMode === 'signals' ? 'bg-primary/20 text-primary' : 'bg-surface-2 text-muted-foreground'}`}
+            >
+              Signals ({sortedSignals.length})
+            </button>
+          </div>
+          <span className="text-[10px] text-muted-foreground hidden md:inline">
+            {viewMode === 'markets' ? 'Browsing all scanned markets' : 'Showing actionable setups only'}
+          </span>
         </div>
 
-        {/* Mobile cards */}
-        <div className="md:hidden divide-y divide-border/50">
-          {sortedSignals.length === 0 && (
-            <div className="px-3 py-8 text-center space-y-3">
-              <p className="text-sm text-muted-foreground">
-                {rawFilteredMarkets.length === 0
-                  ? `No scanned markets match ${activeFilterLabel || 'these filters'}.`
-                  : `${rawFilteredMarkets.length} scanned markets match ${activeFilterLabel || 'these filters'}, but none qualify as actionable signals.`}
-              </p>
-              {hasActiveFilters && (
-                <div className="flex items-center justify-center gap-2 flex-wrap">
-                  <button onClick={resetFilters} className="px-3 py-1.5 rounded-md bg-primary/15 text-primary text-xs font-semibold">
-                    Reset filters
-                  </button>
-                  {filterExchange === 'kalshi' && filterExpiry === '24h' && (
-                    <button onClick={() => setFilterExpiry('7d')} className="px-3 py-1.5 rounded-md bg-surface-2 text-foreground text-xs font-semibold">
-                      Try ≤7D
-                    </button>
+        {viewMode === 'markets' ? (
+          <>
+            <div className="md:hidden divide-y divide-border/50">
+              {sortedMarkets.length === 0 && (
+                <div className="px-3 py-8 text-center space-y-3">
+                  <p className="text-sm text-muted-foreground">No scanned markets match {activeMarketFilterLabel || 'these filters'}.</p>
+                  {hasMarketFilters && (
+                    <div className="flex items-center justify-center gap-2 flex-wrap">
+                      <button onClick={resetFilters} className="px-3 py-1.5 rounded-md bg-primary/15 text-primary text-xs font-semibold">
+                        Reset filters
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
+              {sortedMarkets.map(renderMarketMobileCard)}
             </div>
-          )}
-          {sortedSignals.map(sig => {
-            const mkt = markets.find(m => m.id === sig.marketId);
-            const qt = quotes.find(q => q.marketId === sig.marketId);
-            if (!mkt || !qt) return null;
-            return (
-              <Link key={sig.id} to={`/market/${sig.marketId}`} className="block p-3 hover:bg-surface-2 transition-colors active:bg-surface-2">
-                <div className="flex items-start justify-between gap-2 mb-1.5">
-                  <div className={`flex items-center gap-1 font-bold text-xs ${directionColor(sig.direction)}`}>
-                    {directionIcon(sig.direction)}
-                    <span>{sig.direction}</span>
-                    <span className="ml-1 px-1.5 py-0.5 bg-surface-2 rounded text-[9px] text-muted-foreground font-normal uppercase">{mkt.platform === 'kalshi' ? 'KAL' : 'PM'}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-[10px]">
-                    <span className={`font-bold ${sig.score >= 70 ? 'text-profit' : sig.score >= 50 ? 'text-warning' : 'text-muted-foreground'}`}>{sig.score}pt</span>
-                    <span className="text-muted-foreground">{sig.confidence}%</span>
-                  </div>
-                </div>
-                <p className="text-xs font-medium text-foreground truncate mb-1.5">{mkt.title}</p>
-                <div className="flex items-center justify-between text-[10px] font-mono">
-                  <span>
-                    <span className="text-profit">{fmtPct(mkt.impliedProbYes)}</span>
-                    <span className="text-muted-foreground">/</span>
-                    <span className="text-loss">{fmtPct(mkt.impliedProbNo)}</span>
-                    <span className="text-muted-foreground ml-1">spread {fmtC(qt.spread)}</span>
-                  </span>
-                  <span className="text-muted-foreground">{sig.timeToExpiry}</span>
-                </div>
-                <div className="flex items-center justify-between text-[10px] font-mono mt-1">
-                  <span>
-                    {(sig.entryZone[0] * 100).toFixed(0)}¢→{(sig.targetPrice * 100).toFixed(0)}¢
-                    <span className="text-loss ml-1">✕{(sig.invalidationPrice * 100).toFixed(0)}¢</span>
-                  </span>
-                  <span className={sig.riskReward >= 1.5 ? 'text-profit' : 'text-muted-foreground'}>R:R {sig.riskReward.toFixed(1)}</span>
-                </div>
-              </Link>
-            );
-          })}
-        </div>
 
-        {/* Desktop table */}
-        <div className="hidden md:block overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-border text-muted-foreground">
-                <th className="px-3 py-2 text-left font-medium"><SortHeader k="direction" label="Signal" /></th>
-                <th className="px-3 py-2 text-left font-medium"><SortHeader k="market" label="Market" /></th>
-                <th className="px-3 py-2 text-left font-medium"><SortHeader k="platform" label="Src" /></th>
-                <th className="px-3 py-2 text-left font-medium"><SortHeader k="yesPrice" label="YES/NO" /></th>
-                <th className="px-3 py-2 text-left font-medium"><SortHeader k="spread" label="Spread" /></th>
-                <th className="px-3 py-2 text-left font-medium"><SortHeader k="score" label="Score" /></th>
-                <th className="px-3 py-2 text-left font-medium"><SortHeader k="confidence" label="Conf" /></th>
-                <th className="px-3 py-2 text-left font-medium">Entry → Target</th>
-                <th className="px-3 py-2 text-left font-medium"><SortHeader k="rr" label="R:R" /></th>
-                <th className="px-3 py-2 text-left font-medium"><SortHeader k="volume" label="Vol 24h" /></th>
-                <th className="px-3 py-2 text-left font-medium"><SortHeader k="time" label="Exp" /></th>
-                <th className="px-3 py-2 text-left font-medium">Trade</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedSignals.length === 0 && (
-                <tr>
-                  <td colSpan={12} className="px-3 py-8 text-center">
-                    <div className="space-y-3">
-                      <p className="text-muted-foreground">
-                        {rawFilteredMarkets.length === 0
-                          ? `No scanned markets match ${activeFilterLabel || 'these filters'}.`
-                          : `${rawFilteredMarkets.length} scanned markets match ${activeFilterLabel || 'these filters'}, but none qualify as actionable signals.`}
-                      </p>
-                      {hasActiveFilters && (
-                        <div className="flex items-center justify-center gap-2 flex-wrap">
-                          <button onClick={resetFilters} className="px-3 py-1.5 rounded-md bg-primary/15 text-primary text-xs font-semibold">
-                            Reset filters
-                          </button>
-                          {filterExchange === 'kalshi' && filterExpiry === '24h' && (
-                            <button onClick={() => setFilterExpiry('7d')} className="px-3 py-1.5 rounded-md bg-surface-2 text-foreground text-xs font-semibold">
-                              Try ≤7D
-                            </button>
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border text-muted-foreground">
+                    <th className="px-3 py-2 text-left font-medium"><SortHeader k="market" label="Market" /></th>
+                    <th className="px-3 py-2 text-left font-medium"><SortHeader k="platform" label="Src" /></th>
+                    <th className="px-3 py-2 text-left font-medium">Category</th>
+                    <th className="px-3 py-2 text-left font-medium"><SortHeader k="yesPrice" label="YES/NO" /></th>
+                    <th className="px-3 py-2 text-left font-medium"><SortHeader k="spread" label="Spread" /></th>
+                    <th className="px-3 py-2 text-left font-medium"><SortHeader k="volume" label="Vol 24h" /></th>
+                    <th className="px-3 py-2 text-left font-medium"><SortHeader k="time" label="Exp" /></th>
+                    <th className="px-3 py-2 text-left font-medium">Trade</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedMarkets.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="px-3 py-8 text-center">
+                        <div className="space-y-3">
+                          <p className="text-muted-foreground">No scanned markets match {activeMarketFilterLabel || 'these filters'}.</p>
+                          {hasMarketFilters && (
+                            <div className="flex items-center justify-center gap-2 flex-wrap">
+                              <button onClick={resetFilters} className="px-3 py-1.5 rounded-md bg-primary/15 text-primary text-xs font-semibold">
+                                Reset filters
+                              </button>
+                            </div>
                           )}
                         </div>
+                      </td>
+                    </tr>
+                  )}
+                  {sortedMarkets.map((market) => {
+                    const quote = quotes.find((q) => q.marketId === market.id);
+                    return (
+                      <tr key={market.id} className="border-b border-border/50 hover:bg-surface-2 transition-colors group">
+                        <td className="px-3 py-2">
+                          <Link to={`/market/${market.id}`} className="text-accent hover:underline font-medium block truncate max-w-[260px]" title={market.title}>
+                            {market.title}
+                          </Link>
+                        </td>
+                        <td className="px-3 py-2">
+                          <span className="px-1.5 py-0.5 bg-surface-2 rounded uppercase text-[10px]">{market.platform === 'kalshi' ? 'KAL' : 'PM'}</span>
+                        </td>
+                        <td className="px-3 py-2 capitalize text-muted-foreground">{market.category}</td>
+                        <td className="px-3 py-2 font-mono">
+                          <span className="text-profit">{fmtPct(market.impliedProbYes)}</span>
+                          <span className="text-muted-foreground">/</span>
+                          <span className="text-loss">{fmtPct(market.impliedProbNo)}</span>
+                        </td>
+                        <td className="px-3 py-2 font-mono">{fmtC(quote?.spread ?? 0)}</td>
+                        <td className="px-3 py-2 font-mono text-[10px]">${market.volume24h >= 1000 ? `${(market.volume24h / 1000).toFixed(0)}k` : market.volume24h}</td>
+                        <td className="px-3 py-2 text-muted-foreground">{getMarketExpiryLabel(market.eventEnd)}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-1">
+                            <a href={buildOutcomeTradeUrl(market, 'yes')} target="_blank" rel="noreferrer" className="px-2 py-0.5 rounded text-[10px] font-bold bg-profit/15 text-profit hover:bg-profit/25">YES</a>
+                            <a href={buildOutcomeTradeUrl(market, 'no')} target="_blank" rel="noreferrer" className="px-2 py-0.5 rounded text-[10px] font-bold bg-loss/15 text-loss hover:bg-loss/25">NO</a>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="md:hidden divide-y divide-border/50">
+              {sortedSignals.length === 0 && (
+                <div className="px-3 py-8 text-center space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    {rawFilteredMarkets.length === 0
+                      ? `No scanned markets match ${activeSignalFilterLabel || 'these filters'}.`
+                      : `${rawFilteredMarkets.length} scanned markets match ${activeSignalFilterLabel || 'these filters'}, but none qualify as actionable signals.`}
+                  </p>
+                  {hasSignalFilters && (
+                    <div className="flex items-center justify-center gap-2 flex-wrap">
+                      <button onClick={resetFilters} className="px-3 py-1.5 rounded-md bg-primary/15 text-primary text-xs font-semibold">
+                        Reset filters
+                      </button>
+                      {filterExchange === 'kalshi' && filterExpiry === '24h' && (
+                        <button onClick={() => setFilterExpiry('7d')} className="px-3 py-1.5 rounded-md bg-surface-2 text-foreground text-xs font-semibold">
+                          Try ≤7D
+                        </button>
                       )}
                     </div>
-                  </td>
-                </tr>
+                  )}
+                </div>
               )}
-              {sortedSignals.map(sig => {
-                const mkt = markets.find(m => m.id === sig.marketId);
-                const qt = quotes.find(q => q.marketId === sig.marketId);
-                if (!mkt || !qt) return null;
+              {sortedSignals.map((sig) => {
+                const market = markets.find((m) => m.id === sig.marketId);
+                const quote = quotes.find((q) => q.marketId === sig.marketId);
+                if (!market || !quote) return null;
 
                 return (
-                  <tr key={sig.id} className="border-b border-border/50 hover:bg-surface-2 transition-colors group">
-                    <td className="px-3 py-2">
-                      <div className={`flex items-center gap-1 font-bold ${directionColor(sig.direction)}`}>
+                  <Link key={sig.id} to={`/market/${sig.marketId}`} className="block p-3 hover:bg-surface-2 transition-colors active:bg-surface-2">
+                    <div className="flex items-start justify-between gap-2 mb-1.5">
+                      <div className={`flex items-center gap-1 font-bold text-xs ${directionColor(sig.direction)}`}>
                         {directionIcon(sig.direction)}
                         <span>{sig.direction}</span>
+                        <span className="ml-1 px-1.5 py-0.5 bg-surface-2 rounded text-[9px] text-muted-foreground font-normal uppercase">{market.platform === 'kalshi' ? 'KAL' : 'PM'}</span>
                       </div>
-                    </td>
-                    <td className="px-3 py-2">
-                      <Link to={`/market/${sig.marketId}`} className="text-accent hover:underline font-medium block truncate max-w-[200px]" title={mkt.title}>
-                        {mkt.title}
-                      </Link>
-                    </td>
-                    <td className="px-3 py-2">
-                      <span className="px-1.5 py-0.5 bg-surface-2 rounded uppercase text-[10px]">{mkt.platform === 'kalshi' ? 'KAL' : 'PM'}</span>
-                    </td>
-                    <td className="px-3 py-2 font-mono">
-                      <span className="text-profit">{fmtPct(mkt.impliedProbYes)}</span>
-                      <span className="text-muted-foreground">/</span>
-                      <span className="text-loss">{fmtPct(mkt.impliedProbNo)}</span>
-                    </td>
-                    <td className="px-3 py-2 font-mono">{fmtC(qt.spread)}</td>
-                    <td className="px-3 py-2">
-                      <span className={`font-bold ${sig.score >= 70 ? 'text-profit' : sig.score >= 50 ? 'text-warning' : 'text-muted-foreground'}`}>{sig.score}</span>
-                    </td>
-                    <td className="px-3 py-2">{sig.confidence}%</td>
-                    <td className="px-3 py-2 font-mono text-[10px]">
-                      {sig.direction !== 'PASS' ? (
-                        <span>
-                          {(sig.entryZone[0] * 100).toFixed(0)}¢→{(sig.targetPrice * 100).toFixed(0)}¢
-                          <span className="text-loss ml-1">✕{(sig.invalidationPrice * 100).toFixed(0)}¢</span>
-                        </span>
-                      ) : <span className="text-muted-foreground">—</span>}
-                    </td>
-                    <td className="px-3 py-2 font-mono">
-                      {sig.riskReward > 0 ? <span className={sig.riskReward >= 1.5 ? 'text-profit' : 'text-muted-foreground'}>{sig.riskReward.toFixed(1)}</span> : '—'}
-                    </td>
-                    <td className="px-3 py-2 font-mono text-[10px]">
-                      ${mkt.volume24h >= 1000 ? `${(mkt.volume24h / 1000).toFixed(0)}k` : mkt.volume24h}
-                    </td>
-                    <td className="px-3 py-2 text-muted-foreground">{sig.timeToExpiry}</td>
-                    <td className="px-3 py-2">
-                      <div className="flex items-center gap-1">
-                        <a href={buildOutcomeTradeUrl(mkt, 'yes')} target="_blank" rel="noreferrer"
-                          className="px-2 py-0.5 rounded text-[10px] font-bold bg-profit/15 text-profit hover:bg-profit/25">YES</a>
-                        <a href={buildOutcomeTradeUrl(mkt, 'no')} target="_blank" rel="noreferrer"
-                          className="px-2 py-0.5 rounded text-[10px] font-bold bg-loss/15 text-loss hover:bg-loss/25">NO</a>
+                      <div className="flex items-center gap-1.5 text-[10px]">
+                        <span className={`font-bold ${sig.score >= 70 ? 'text-profit' : sig.score >= 50 ? 'text-warning' : 'text-muted-foreground'}`}>{sig.score}pt</span>
+                        <span className="text-muted-foreground">{sig.confidence}%</span>
                       </div>
-                    </td>
-                  </tr>
+                    </div>
+                    <p className="text-xs font-medium text-foreground truncate mb-1.5">{market.title}</p>
+                    <div className="flex items-center justify-between text-[10px] font-mono">
+                      <span>
+                        <span className="text-profit">{fmtPct(market.impliedProbYes)}</span>
+                        <span className="text-muted-foreground">/</span>
+                        <span className="text-loss">{fmtPct(market.impliedProbNo)}</span>
+                        <span className="text-muted-foreground ml-1">spread {fmtC(quote.spread)}</span>
+                      </span>
+                      <span className="text-muted-foreground">{sig.timeToExpiry}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] font-mono mt-1">
+                      <span>
+                        {(sig.entryZone[0] * 100).toFixed(0)}¢→{(sig.targetPrice * 100).toFixed(0)}¢
+                        <span className="text-loss ml-1">✕{(sig.invalidationPrice * 100).toFixed(0)}¢</span>
+                      </span>
+                      <span className={sig.riskReward >= 1.5 ? 'text-profit' : 'text-muted-foreground'}>R:R {sig.riskReward.toFixed(1)}</span>
+                    </div>
+                  </Link>
                 );
               })}
-            </tbody>
-          </table>
-        </div>
+            </div>
+
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border text-muted-foreground">
+                    <th className="px-3 py-2 text-left font-medium"><SortHeader k="direction" label="Signal" /></th>
+                    <th className="px-3 py-2 text-left font-medium"><SortHeader k="market" label="Market" /></th>
+                    <th className="px-3 py-2 text-left font-medium"><SortHeader k="platform" label="Src" /></th>
+                    <th className="px-3 py-2 text-left font-medium"><SortHeader k="yesPrice" label="YES/NO" /></th>
+                    <th className="px-3 py-2 text-left font-medium"><SortHeader k="spread" label="Spread" /></th>
+                    <th className="px-3 py-2 text-left font-medium"><SortHeader k="score" label="Score" /></th>
+                    <th className="px-3 py-2 text-left font-medium"><SortHeader k="confidence" label="Conf" /></th>
+                    <th className="px-3 py-2 text-left font-medium">Entry → Target</th>
+                    <th className="px-3 py-2 text-left font-medium"><SortHeader k="rr" label="R:R" /></th>
+                    <th className="px-3 py-2 text-left font-medium"><SortHeader k="volume" label="Vol 24h" /></th>
+                    <th className="px-3 py-2 text-left font-medium"><SortHeader k="time" label="Exp" /></th>
+                    <th className="px-3 py-2 text-left font-medium">Trade</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedSignals.length === 0 && (
+                    <tr>
+                      <td colSpan={12} className="px-3 py-8 text-center">
+                        <div className="space-y-3">
+                          <p className="text-muted-foreground">
+                            {rawFilteredMarkets.length === 0
+                              ? `No scanned markets match ${activeSignalFilterLabel || 'these filters'}.`
+                              : `${rawFilteredMarkets.length} scanned markets match ${activeSignalFilterLabel || 'these filters'}, but none qualify as actionable signals.`}
+                          </p>
+                          {hasSignalFilters && (
+                            <div className="flex items-center justify-center gap-2 flex-wrap">
+                              <button onClick={resetFilters} className="px-3 py-1.5 rounded-md bg-primary/15 text-primary text-xs font-semibold">
+                                Reset filters
+                              </button>
+                              {filterExchange === 'kalshi' && filterExpiry === '24h' && (
+                                <button onClick={() => setFilterExpiry('7d')} className="px-3 py-1.5 rounded-md bg-surface-2 text-foreground text-xs font-semibold">
+                                  Try ≤7D
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  {sortedSignals.map((sig) => {
+                    const market = markets.find((m) => m.id === sig.marketId);
+                    const quote = quotes.find((q) => q.marketId === sig.marketId);
+                    if (!market || !quote) return null;
+
+                    return (
+                      <tr key={sig.id} className="border-b border-border/50 hover:bg-surface-2 transition-colors group">
+                        <td className="px-3 py-2">
+                          <div className={`flex items-center gap-1 font-bold ${directionColor(sig.direction)}`}>
+                            {directionIcon(sig.direction)}
+                            <span>{sig.direction}</span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2">
+                          <Link to={`/market/${sig.marketId}`} className="text-accent hover:underline font-medium block truncate max-w-[200px]" title={market.title}>
+                            {market.title}
+                          </Link>
+                        </td>
+                        <td className="px-3 py-2">
+                          <span className="px-1.5 py-0.5 bg-surface-2 rounded uppercase text-[10px]">{market.platform === 'kalshi' ? 'KAL' : 'PM'}</span>
+                        </td>
+                        <td className="px-3 py-2 font-mono">
+                          <span className="text-profit">{fmtPct(market.impliedProbYes)}</span>
+                          <span className="text-muted-foreground">/</span>
+                          <span className="text-loss">{fmtPct(market.impliedProbNo)}</span>
+                        </td>
+                        <td className="px-3 py-2 font-mono">{fmtC(quote.spread)}</td>
+                        <td className="px-3 py-2">
+                          <span className={`font-bold ${sig.score >= 70 ? 'text-profit' : sig.score >= 50 ? 'text-warning' : 'text-muted-foreground'}`}>{sig.score}</span>
+                        </td>
+                        <td className="px-3 py-2">{sig.confidence}%</td>
+                        <td className="px-3 py-2 font-mono text-[10px]">
+                          <span>
+                            {(sig.entryZone[0] * 100).toFixed(0)}¢→{(sig.targetPrice * 100).toFixed(0)}¢
+                            <span className="text-loss ml-1">✕{(sig.invalidationPrice * 100).toFixed(0)}¢</span>
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 font-mono">
+                          {sig.riskReward > 0 ? <span className={sig.riskReward >= 1.5 ? 'text-profit' : 'text-muted-foreground'}>{sig.riskReward.toFixed(1)}</span> : '—'}
+                        </td>
+                        <td className="px-3 py-2 font-mono text-[10px]">${market.volume24h >= 1000 ? `${(market.volume24h / 1000).toFixed(0)}k` : market.volume24h}</td>
+                        <td className="px-3 py-2 text-muted-foreground">{sig.timeToExpiry}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-1">
+                            <a href={buildOutcomeTradeUrl(market, 'yes')} target="_blank" rel="noreferrer" className="px-2 py-0.5 rounded text-[10px] font-bold bg-profit/15 text-profit hover:bg-profit/25">YES</a>
+                            <a href={buildOutcomeTradeUrl(market, 'no')} target="_blank" rel="noreferrer" className="px-2 py-0.5 rounded text-[10px] font-bold bg-loss/15 text-loss hover:bg-loss/25">NO</a>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </div>
 
-      {/* Profit Calculator */}
-      {sortedSignals.length > 0 && (() => {
+      {viewMode === 'signals' && sortedSignals.length > 0 && (() => {
         const stakes = [1, 5, 10];
         const takerFee = scannerConfig.profile.feeModel.taker;
         const slippage = scannerConfig.profile.slippageModel;
-        const topPlays = sortedSignals.filter(s => s.direction !== 'PASS').slice(0, 10);
+        const topPlays = sortedSignals.filter((s) => s.direction !== 'PASS').slice(0, 10);
 
         const calcProfit = (entryPrice: number, stake: number) => {
           const contracts = Math.floor(stake / entryPrice);
           if (contracts <= 0) return { contracts: 0, gross: 0, fees: 0, slip: 0, net: 0, roi: 0 };
           const gross = (1 - entryPrice) * contracts;
-          const fees = takerFee * contracts * 2; // entry + exit
+          const fees = takerFee * contracts * 2;
           const slip = slippage * contracts * 2;
           const net = gross - fees - slip;
           const cost = entryPrice * contracts;
@@ -545,17 +745,20 @@ const Dashboard = () => {
           return { contracts, gross, fees, slip, net, roi };
         };
 
-        // Totals if you win ALL plays
-        const totals = stakes.map(stake => {
-          let totalNet = 0, totalFees = 0, totalSlip = 0, totalGross = 0, totalCost = 0;
-          topPlays.forEach(sig => {
+        const totals = stakes.map((stake) => {
+          let totalNet = 0;
+          let totalFees = 0;
+          let totalSlip = 0;
+          let totalGross = 0;
+          let totalCost = 0;
+          topPlays.forEach((sig) => {
             const entry = sig.entryZone[0];
-            const r = calcProfit(entry, stake);
-            totalNet += r.net;
-            totalFees += r.fees;
-            totalSlip += r.slip;
-            totalGross += r.gross;
-            totalCost += entry * r.contracts;
+            const result = calcProfit(entry, stake);
+            totalNet += result.net;
+            totalFees += result.fees;
+            totalSlip += result.slip;
+            totalGross += result.gross;
+            totalCost += entry * result.contracts;
           });
           return { stake, totalNet, totalFees, totalSlip, totalGross, totalCost, roi: totalCost > 0 ? (totalNet / totalCost) * 100 : 0 };
         });
@@ -571,26 +774,24 @@ const Dashboard = () => {
               </h2>
             </div>
 
-            {/* Summary totals */}
             <div className="grid grid-cols-3 gap-2 md:gap-3 p-3 md:p-4 border-b border-border">
-              {totals.map(t => (
-                <div key={t.stake} className="bg-surface-2 rounded-lg p-2 md:p-3 text-center">
-                  <div className="text-[9px] md:text-[10px] text-muted-foreground mb-0.5 md:mb-1">@ ${t.stake}/trade</div>
-                  <div className={`text-base md:text-xl font-bold font-mono ${t.totalNet >= 0 ? 'text-profit' : 'text-loss'}`}>
-                    ${t.totalNet.toFixed(2)}
+              {totals.map((total) => (
+                <div key={total.stake} className="bg-surface-2 rounded-lg p-2 md:p-3 text-center">
+                  <div className="text-[9px] md:text-[10px] text-muted-foreground mb-0.5 md:mb-1">@ ${total.stake}/trade</div>
+                  <div className={`text-base md:text-xl font-bold font-mono ${total.totalNet >= 0 ? 'text-profit' : 'text-loss'}`}>
+                    ${total.totalNet.toFixed(2)}
                   </div>
                   <div className="text-[8px] md:text-[10px] text-muted-foreground mt-0.5 md:mt-1">
-                    ROI: <span className={t.roi >= 0 ? 'text-profit' : 'text-loss'}>{t.roi.toFixed(1)}%</span>
+                    ROI: <span className={total.roi >= 0 ? 'text-profit' : 'text-loss'}>{total.roi.toFixed(1)}%</span>
                     <span className="hidden sm:inline">
-                      {' · '}Fees: <span className="text-loss">${t.totalFees.toFixed(2)}</span>
-                      {' · '}Slip: <span className="text-loss">${t.totalSlip.toFixed(2)}</span>
+                      {' · '}Fees: <span className="text-loss">${total.totalFees.toFixed(2)}</span>
+                      {' · '}Slip: <span className="text-loss">${total.totalSlip.toFixed(2)}</span>
                     </span>
                   </div>
                 </div>
               ))}
             </div>
 
-            {/* Per-trade breakdown */}
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
@@ -598,31 +799,31 @@ const Dashboard = () => {
                     <th className="px-3 py-2 text-left font-medium">Signal</th>
                     <th className="px-3 py-2 text-left font-medium">Market</th>
                     <th className="px-3 py-2 text-left font-medium">Entry</th>
-                    {stakes.map(s => (
-                      <th key={s} className="px-3 py-2 text-center font-medium" colSpan={1}>${s} Net</th>
+                    {stakes.map((stake) => (
+                      <th key={stake} className="px-3 py-2 text-center font-medium">${stake} Net</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {topPlays.map(sig => {
-                    const mkt = markets.find(m => m.id === sig.marketId);
-                    if (!mkt) return null;
+                  {topPlays.map((sig) => {
+                    const market = markets.find((m) => m.id === sig.marketId);
+                    if (!market) return null;
                     const entry = sig.entryZone[0];
                     return (
-                      <tr key={sig.id} className="border-b border-border/50 hover:bg-surface-2 cursor-pointer" onClick={() => navigate(`/market/${mkt.id}`)}>
+                      <tr key={sig.id} className="border-b border-border/50 hover:bg-surface-2 cursor-pointer" onClick={() => navigate(`/market/${market.id}`)}>
                         <td className="px-3 py-2">
                           <span className={`font-bold ${directionColor(sig.direction)}`}>{sig.direction}</span>
                         </td>
-                        <td className="px-3 py-2 truncate max-w-[180px]" title={mkt.title}>{mkt.title}</td>
+                        <td className="px-3 py-2 truncate max-w-[180px]" title={market.title}>{market.title}</td>
                         <td className="px-3 py-2 font-mono">{(entry * 100).toFixed(0)}¢</td>
-                        {stakes.map(s => {
-                          const r = calcProfit(entry, s);
+                        {stakes.map((stake) => {
+                          const result = calcProfit(entry, stake);
                           return (
-                            <td key={s} className="px-3 py-2 text-center font-mono">
-                              <span className={r.net >= 0 ? 'text-profit' : 'text-loss'}>
-                                {r.net >= 0 ? '+' : ''}${r.net.toFixed(2)}
+                            <td key={stake} className="px-3 py-2 text-center font-mono">
+                              <span className={result.net >= 0 ? 'text-profit' : 'text-loss'}>
+                                {result.net >= 0 ? '+' : ''}${result.net.toFixed(2)}
                               </span>
-                              <div className="text-[9px] text-muted-foreground">{r.contracts}ct · {r.roi.toFixed(0)}%</div>
+                              <div className="text-[9px] text-muted-foreground">{result.contracts}ct · {result.roi.toFixed(0)}%</div>
                             </td>
                           );
                         })}
@@ -636,13 +837,12 @@ const Dashboard = () => {
         );
       })()}
 
-      {/* Top thesis cards */}
-      {sortedSignals.filter(s => s.direction !== 'PASS').length > 0 && (
+      {viewMode === 'signals' && sortedSignals.filter((s) => s.direction !== 'PASS').length > 0 && (
         <div>
           <h2 className="text-sm font-semibold mb-2 flex items-center gap-2"><Zap className="w-4 h-4 text-primary" /> Top Setups</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-            {sortedSignals.filter(s => s.direction !== 'PASS').slice(0, 6).map(sig => {
-              const mkt = markets.find(m => m.id === sig.marketId)!;
+            {sortedSignals.filter((s) => s.direction !== 'PASS').slice(0, 6).map((sig) => {
+              const market = markets.find((m) => m.id === sig.marketId)!;
               return (
                 <Link key={sig.id} to={`/market/${sig.marketId}`} className="glass-card border border-border rounded-lg p-3 space-y-2 interactive-lift block">
                   <div className="flex items-center justify-between">
@@ -651,7 +851,7 @@ const Dashboard = () => {
                     </div>
                     <span className="text-[10px] text-muted-foreground">{sig.setupType}</span>
                   </div>
-                  <p className="text-xs font-medium truncate">{mkt.title}</p>
+                  <p className="text-xs font-medium truncate">{market.title}</p>
                   <p className="text-[11px] text-muted-foreground leading-snug">{sig.thesis}</p>
                   <div className="flex items-center gap-3 text-[10px] font-mono">
                     <span>Score: <strong>{sig.score}</strong></span>
