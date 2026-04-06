@@ -220,11 +220,11 @@ const Dashboard = () => {
       {/* Stats grid */}
       <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-2 md:gap-3">
         {[
-          { label: 'Markets', value: markets.length.toString(), icon: Activity, color: 'text-foreground' },
+          { label: 'Scanned', value: markets.length.toString(), icon: Activity, color: 'text-foreground' },
+          { label: 'Signals', value: actionableSignals.length.toString(), icon: Zap, color: 'text-primary' },
           { label: 'YES', value: yesSignals.toString(), icon: TrendingUp, color: 'text-profit' },
           { label: 'NO', value: noSignals.toString(), icon: TrendingDown, color: 'text-loss' },
           { label: 'Avg Edge', value: fmtC(avgEdge), icon: DollarSign, color: 'text-profit' },
-          { label: 'Target', value: fmt(remaining), icon: Target, color: 'text-primary' },
           { label: 'Max Loss', value: fmt(scannerConfig.profile.maxDailyLoss), icon: AlertTriangle, color: 'text-loss' },
           { label: 'Est. Trades', value: Number.isFinite(tradesNeeded) ? tradesNeeded.toString() : '—', icon: Clock, color: 'text-muted-foreground' },
         ].map(({ label, value, icon: Icon, color }) => (
