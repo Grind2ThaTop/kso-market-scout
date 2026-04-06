@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { constants, createSign } from "node:crypto";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,62 +10,47 @@ const corsHeaders = {
 const KALSHI_BASE = "https://api.elections.kalshi.com/trade-api/v2";
 const GAMMA_API = "https://gamma-api.polymarket.com";
 
-// ─── KALSHI SIGNING ───
-function uint8ToBase64(arr: Uint8Array): string {
-  let binary = "";
-  for (const byte of arr) binary += String.fromCharCode(byte);
-  return btoa(binary);
-}
+function normalizePem(raw: string): string {
+  const normalizedRaw = raw.replace(/\\n/g, "\n").replace(/\r\n/g, "\n").trim();
 
-// Convert PKCS#1 DER to PKCS#8 DER by wrapping with AlgorithmIdentifier
-function wrapPkcs1ToPkcs8(pkcs1Der: Uint8Array): Uint8Array {
-  // RSA AlgorithmIdentifier OID: 1.2.840.113549.1.1.1 + NULL params
-  const oid = new Uint8Array([0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01, 0x05, 0x00]);
-  const algIdLen = oid.length;
-  const algIdSeq = new Uint8Array([0x30, algIdLen, ...oid]);
-  // Wrap PKCS#1 key in OCTET STRING
-  const octetContent = pkcs1Der;
-  const octetLenBytes = encodeDerLength(octetContent.length);
-  const octetString = new Uint8Array([0x04, ...octetLenBytes, ...octetContent]);
-  // Version INTEGER 0
-  const version = new Uint8Array([0x02, 0x01, 0x00]);
-  // Outer SEQUENCE
-  const innerLen = version.length + algIdSeq.length + octetString.length;
-  const outerLenBytes = encodeDerLength(innerLen);
-  const result = new Uint8Array([0x30, ...outerLenBytes, ...version, ...algIdSeq, ...octetString]);
-  return result;
-}
+  if (normalizedRaw.includes("-----BEGIN") && normalizedRaw.split("\n").length > 3) {
+    return normalizedRaw;
+  }
 
-function encodeDerLength(len: number): number[] {
-  if (len < 128) return [len];
-  const bytes: number[] = [];
-  let tmp = len;
-  while (tmp > 0) { bytes.unshift(tmp & 0xff); tmp >>= 8; }
-  return [0x80 | bytes.length, ...bytes];
+  const isRsa = normalizedRaw.includes("RSA PRIVATE KEY");
+  const header = isRsa ? "-----BEGIN RSA PRIVATE KEY-----" : "-----BEGIN PRIVATE KEY-----";
+  const footer = isRsa ? "-----END RSA PRIVATE KEY-----" : "-----END PRIVATE KEY-----";
+  const b64 = normalizedRaw
+    .replace(/-----BEGIN (RSA )?PRIVATE KEY-----/g, "")
+    .replace(/-----END (RSA )?PRIVATE KEY-----/g, "")
+    .replace(/\s/g, "");
+  const lines = b64.match(/.{1,64}/g) || [];
+  return [header, ...lines, footer].join("\n");
 }
 
 async function signKalshi(apiKeyId: string, privateKeyPem: string, method: string, path: string, body = "") {
   const timestamp = String(Date.now());
-  const payload = `${timestamp}${method.toUpperCase()}${path}${body}`;
-  const pemBody = privateKeyPem.replace(/-----BEGIN (RSA )?PRIVATE KEY-----/g, "").replace(/-----END (RSA )?PRIVATE KEY-----/g, "").replace(/\s/g, "");
-  let keyData = Uint8Array.from(atob(pemBody), (c) => c.charCodeAt(0));
+  const pathWithoutQuery = path.split("?")[0];
+  const signedPath = `/trade-api/v2${pathWithoutQuery}`;
+  const payload = `${timestamp}${method.toUpperCase()}${signedPath}${body}`;
+  const pem = normalizePem(privateKeyPem);
+  const signer = createSign("RSA-SHA256");
+  signer.update(payload);
+  const signature = signer.sign(
+    {
+      key: pem,
+      padding: constants.RSA_PKCS1_PSS_PADDING,
+      saltLength: constants.RSA_PSS_SALTLEN_DIGEST,
+    },
+    "base64"
+  );
 
-  // Detect PKCS#1 (starts with INTEGER tag 0x02) vs PKCS#8 (starts with SEQUENCE 0x30)
-  // PKCS#1 RSAPrivateKey starts: SEQUENCE { INTEGER(version=0), ... }
-  // But the outer byte is 0x30 for both. The difference is at DER byte ~7.
-  // If import as pkcs8 fails, try wrapping as PKCS#1 → PKCS#8
-  let key: CryptoKey;
-  try {
-    key = await crypto.subtle.importKey("pkcs8", keyData, { name: "RSA-PSS", hash: "SHA-256" }, false, ["sign"]);
-  } catch {
-    // Assume PKCS#1 format, wrap to PKCS#8
-    console.log("[SIGN] PKCS#8 import failed, trying PKCS#1 → PKCS#8 conversion");
-    const pkcs8Data = wrapPkcs1ToPkcs8(keyData);
-    key = await crypto.subtle.importKey("pkcs8", pkcs8Data, { name: "RSA-PSS", hash: "SHA-256" }, false, ["sign"]);
-  }
-
-  const sig = await crypto.subtle.sign({ name: "RSA-PSS", saltLength: 32 }, key, new TextEncoder().encode(payload));
-  return { "KALSHI-ACCESS-KEY": apiKeyId, "KALSHI-ACCESS-SIGNATURE": uint8ToBase64(new Uint8Array(sig)), "KALSHI-ACCESS-TIMESTAMP": timestamp, "Content-Type": "application/json" };
+  return {
+    "KALSHI-ACCESS-KEY": apiKeyId,
+    "KALSHI-ACCESS-SIGNATURE": signature,
+    "KALSHI-ACCESS-TIMESTAMP": timestamp,
+    "Content-Type": "application/json",
+  };
 }
 
 async function kalshiRequest(apiKeyId: string, privateKey: string, path: string, method = "GET", body?: Record<string, unknown>) {
