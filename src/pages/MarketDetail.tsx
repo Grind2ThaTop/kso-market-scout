@@ -57,60 +57,59 @@ const MarketDetail = () => {
   const cleanScrapedContent = (raw: string): string => {
     const lines = raw.split('\n');
 
-    // Find start: first H1/H2 matching title, or "Market Rules"/"Resolution"
-    const titleWords = market.title.toLowerCase().split(/\s+/).filter(w => w.length > 3).slice(0, 3);
-    let startIdx = -1;
+    const sectionStartPatterns = [
+      /^#+\s*(market\s*rules|resolution|resolution criteria|contract terms|description|about|how .* resolves)/i,
+      /^timeline and payout$/i,
+      /^trading prohibitions$/i,
+    ];
 
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim().toLowerCase();
-      if (line.startsWith('#')) {
-        const matchCount = titleWords.filter(w => line.includes(w)).length;
-        if (matchCount >= Math.min(2, titleWords.length)) {
-          startIdx = i;
-          break;
-        }
-      }
-    }
+    const sectionEndPatterns = [
+      /^#+\s*(people are also|ideas|activity|related markets|comments|discussion)/i,
+      /^sign up to trade$/i,
+      /^twitter widget/i,
+      /^show more$/i,
+      /^##\s*buy\s+(yes|no)/i,
+    ];
+
+    let startIdx = lines.findIndex((line) =>
+      sectionStartPatterns.some((pattern) => pattern.test(line.trim()))
+    );
 
     if (startIdx === -1) {
+      const titleWords = market.title.toLowerCase().split(/\s+/).filter((w) => w.length > 3).slice(0, 3);
       for (let i = 0; i < lines.length; i++) {
-        if (/^#+\s*(market\s*rules|resolution|description|about)/i.test(lines[i].trim())) {
-          startIdx = i;
-          break;
+        const line = lines[i].trim().toLowerCase();
+        if (line.startsWith('#')) {
+          const matchCount = titleWords.filter((w) => line.includes(w)).length;
+          if (matchCount >= Math.min(2, titleWords.length)) {
+            startIdx = i;
+            break;
+          }
         }
       }
     }
 
     if (startIdx === -1) return 'Could not extract meaningful market content. Try visiting the exchange page directly.';
 
-    // Find end: cut at "People are also trading", "Ideas", "Activity", "Sign up", trade widget junk
-    const stopPatterns = [
-      /^#+\s*(people are also|ideas|activity|related markets)/i,
-      /sign up to trade/i,
-      /^##\s*buy\s+(yes|no)/i,
-      /twitter widget/i,
-      /show more/i,
-    ];
-
     let endIdx = lines.length;
     for (let i = startIdx + 1; i < lines.length; i++) {
-      const t = lines[i].trim();
-      if (stopPatterns.some(p => p.test(t))) {
+      const trimmed = lines[i].trim();
+      if (sectionEndPatterns.some((pattern) => pattern.test(trimmed))) {
         endIdx = i;
         break;
       }
     }
 
-    const relevant = lines.slice(startIdx, endIdx).join('\n');
-
-    const cleaned = relevant
+    const cleaned = lines
+      .slice(startIdx, endIdx)
+      .join('\n')
       .replace(/\[!\[.*?\]\(.*?\)\]/g, '')
       .replace(/!\[.*?\]\(.*?\)/g, '')
-      .replace(/\[([^\]]*)\]\(https?:\/\/[^)]*\)/g, '$1')
-      .replace(/^\s*(Browse|Live\d*|Portfolio|Search|Loading more|Pick up to|Earn \d).*$/gm, '')
-      .replace(/^(Yes|No)\d+¢$/gm, '')
-      .replace(/^(Buy|Sell|Dollars)$/gm, '')
-      .replace(/^Amount$/gm, '')
+      .replace(/\[([^\]]+)\]\(https?:\/\/[^)]*\)/g, '$1')
+      .replace(/^(View full rules|Help center|Report Insider Trading|Pick up to .*|Loading more\.\.\.)$/gim, '')
+      .replace(/^(Series|Event|Market)[A-Z0-9-]+$/gm, '')
+      .replace(/^(Yes|No)\s*\d+¢$/gim, '')
+      .replace(/^Yes\d+¢No\d+¢$/gim, '')
       .replace(/\n{3,}/g, '\n\n')
       .trim();
 
