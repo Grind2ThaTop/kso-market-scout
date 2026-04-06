@@ -13,6 +13,9 @@ const fmtPct = (n: number) => `${n.toFixed(1)}%`;
 type SortKey = 'market' | 'platform' | 'direction' | 'yesPrice' | 'spread' | 'score' | 'confidence' | 'time' | 'volume' | 'rr';
 type FilterDirection = 'ALL' | SignalDirection;
 type FilterCategory = 'all' | 'sports' | 'politics' | 'economics' | 'weather' | 'culture' | 'crypto' | 'tech' | 'science' | 'entertainment' | 'finance' | 'health' | 'legal' | 'other';
+type FilterExchange = 'all' | 'kalshi' | 'polymarket';
+type FilterVolume = 'all' | '1k' | '10k' | '100k';
+type FilterExpiry = 'all' | '1h' | '24h' | '7d' | '30d';
 
 const directionIcon = (d: SignalDirection) => {
   if (d === 'YES') return <ArrowUpRight className="w-3.5 h-3.5" />;
