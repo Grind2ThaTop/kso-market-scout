@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useMemo, useState, useCallback } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { TrendingUp, TrendingDown, Target, AlertTriangle, DollarSign, Activity, WifiOff, ArrowUpRight, ArrowDownRight, MinusCircle, Zap, Clock, Filter } from 'lucide-react';
 import { useMarketScanner } from '@/hooks/useMarketScanner';
 import { scannerConfig } from '@/data/liveApi';
@@ -38,6 +38,7 @@ const timeToHours = (value: string) => {
 };
 
 const Dashboard = () => {
+  const navigate = useNavigate();
   const { data, isLoading, isFetching, isError, error, refetch } = useMarketScanner();
   const [sortKey, setSortKey] = useState<SortKey>('score');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
@@ -402,7 +403,7 @@ const Dashboard = () => {
                     if (!mkt) return null;
                     const entry = sig.entryZone[0];
                     return (
-                      <tr key={sig.id} className="border-b border-border/50 hover:bg-surface-2">
+                      <tr key={sig.id} className="border-b border-border/50 hover:bg-surface-2 cursor-pointer" onClick={() => navigate(`/market/${mkt.id}`)}>
                         <td className="px-3 py-2">
                           <span className={`font-bold ${directionColor(sig.direction)}`}>{sig.direction}</span>
                         </td>
