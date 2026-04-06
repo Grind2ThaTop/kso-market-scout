@@ -718,18 +718,39 @@ const AutoTradePage = () => {
           ) : (
             <div className="space-y-2">
               {openPositions.map(pos => (
-                <div key={pos.id} className="flex items-center justify-between bg-surface-2 rounded-lg p-3">
-                  <div>
-                    <p className="text-xs font-medium truncate max-w-[200px]">{pos.market_title}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Badge variant="outline" className={pos.side === 'yes' ? 'text-profit border-profit/40' : 'text-loss border-loss/40'}>{pos.side.toUpperCase()}</Badge>
-                      <span className="text-[10px] text-muted-foreground font-mono">{pos.provider}</span>
-                      {pos.paper_mode && <Badge variant="outline" className="text-warning border-warning/40 text-[9px]">PAPER</Badge>}
+                <div key={pos.id} className="bg-surface-2 rounded-lg p-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-medium truncate max-w-[220px]">{pos.market_title}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Badge variant="outline" className={pos.side === 'yes' ? 'text-profit border-profit/40' : 'text-loss border-loss/40'}>{pos.side.toUpperCase()}</Badge>
+                        <span className="text-[10px] text-muted-foreground font-mono">{pos.provider}</span>
+                        {pos.paper_mode && <Badge variant="outline" className="text-warning border-warning/40 text-[9px]">PAPER</Badge>}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className={`text-sm font-mono font-bold ${(pos.pnl ?? 0) >= 0 ? 'text-profit' : 'text-loss'}`}>
+                        {(pos.pnl ?? 0) >= 0 ? '+' : ''}${(pos.pnl ?? 0).toFixed(2)}
+                      </p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-xs font-mono">Entry: {(pos.entry_price * 100).toFixed(0)}¢</p>
-                    <p className={`text-xs font-mono font-bold ${pos.pnl >= 0 ? 'text-profit' : 'text-loss'}`}>P&L: ${pos.pnl.toFixed(2)}</p>
+                  <div className="grid grid-cols-4 gap-2 mt-2 text-[10px] font-mono text-muted-foreground">
+                    <div>
+                      <span className="block text-[9px] uppercase tracking-wide">Entry</span>
+                      <span className="text-foreground">{(pos.entry_price * 100).toFixed(0)}¢</span>
+                    </div>
+                    <div>
+                      <span className="block text-[9px] uppercase tracking-wide">Target</span>
+                      <span className="text-foreground">{pos.target_price ? `${(pos.target_price * 100).toFixed(0)}¢` : '—'}</span>
+                    </div>
+                    <div>
+                      <span className="block text-[9px] uppercase tracking-wide">Size</span>
+                      <span className="text-foreground">${pos.size.toFixed(2)}</span>
+                    </div>
+                    <div>
+                      <span className="block text-[9px] uppercase tracking-wide">Contracts</span>
+                      <span className="text-foreground">{Math.max(1, Math.floor(pos.size / pos.entry_price))}</span>
+                    </div>
                   </div>
                 </div>
               ))}
