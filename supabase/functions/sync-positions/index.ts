@@ -203,6 +203,68 @@ Deno.serve(async (req) => {
       }
     }
 
+    // --- Sync paper positions: fetch current prices and update PnL ---
+    const { data: paperPositions } = await supabase
+      .from("positions")
+      .select("id, market_id, provider, side, entry_price, size")
+      .eq("user_id", userId)
+      .eq("status", "open")
+      .eq("paper_mode", true);
+
+    let paperSynced = 0;
+
+    for (const pp of paperPositions ?? []) {
+      let currentPrice: number | null = null;
+
+      try {
+        if (pp.provider === "polymarket") {
+          // Polymarket CLOB API for token price
+          const res = await fetch(`https://clob.polymarket.com/price?token_id=${pp.market_id}&side=buy`);
+          if (res.ok) {
+            const data = await res.json();
+            currentPrice = Number(data.price ?? data) || null;
+          }
+          // Fallback: try Gamma API
+          if (!currentPrice) {
+            const gammaRes = await fetch(`https://gamma-api.polymarket.com/markets?id=${pp.market_id}&limit=1`);
+            if (gammaRes.ok) {
+              const markets = await gammaRes.json();
+              const m = Array.isArray(markets) ? markets[0] : null;
+              if (m) {
+                currentPrice = pp.side === "yes"
+                  ? Number(m.outcomePrices?.[0] ?? m.bestAsk ?? m.lastTradePrice) || null
+                  : Number(m.outcomePrices?.[1] ?? m.bestBid) || null;
+              }
+            }
+          }
+        } else if (pp.provider === "kalshi") {
+          // Kalshi public market endpoint
+          const res = await fetch(`${KALSHI_BASE}/markets/${pp.market_id}`);
+          if (res.ok) {
+            const data = await res.json();
+            const mkt = data.market ?? data;
+            currentPrice = pp.side === "yes"
+              ? (Number(mkt.yes_ask ?? mkt.last_price ?? mkt.yes_price) / 100) || null
+              : (Number(mkt.no_ask ?? mkt.no_price) / 100) || null;
+          }
+        }
+      } catch (e) {
+        console.error(`Paper price fetch failed for ${pp.market_id}:`, e);
+      }
+
+      if (currentPrice !== null && currentPrice > 0) {
+        const pnl = pp.side === "yes"
+          ? (currentPrice - pp.entry_price) * (pp.size / pp.entry_price)
+          : (pp.entry_price - currentPrice) * (pp.size / pp.entry_price);
+
+        await supabase
+          .from("positions")
+          .update({ current_price: currentPrice, pnl })
+          .eq("id", pp.id);
+        paperSynced++;
+      }
+    }
+
     return new Response(
       JSON.stringify({
         balance: balance
@@ -222,6 +284,7 @@ Deno.serve(async (req) => {
           ? liveOrders.orders.length
           : 0,
         synced,
+        paperSynced,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
