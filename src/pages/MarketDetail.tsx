@@ -206,10 +206,16 @@ const MarketDetail = () => {
             <div className="flex justify-between"><span>P&L if Stopped</span><span className="text-loss">${projectedPnlStop.toFixed(2)}</span></div>
           </div>
           <button onClick={() => setShowPlaced(true)} className="w-full py-2 bg-primary text-primary-foreground rounded font-semibold text-[11px]">Save Paper Plan</button>
-          <a href={buildOutcomeTradeUrl(market, side)} target="_blank" rel="noreferrer"
-            className="flex items-center justify-center gap-1 w-full py-2 bg-accent text-accent-foreground rounded font-semibold text-[11px] hover:bg-accent/90">
-            <ExternalLink className="w-3 h-3" /> Trade on {market.platform}
-          </a>
+          {market.market_url ? (
+            <a href={buildOutcomeTradeUrl(market, side)} target="_blank" rel="noreferrer"
+              className="flex items-center justify-center gap-1 w-full py-2 bg-accent text-accent-foreground rounded font-semibold text-[11px] hover:bg-accent/90">
+              <ExternalLink className="w-3 h-3" /> Trade on {market.platform}
+            </a>
+          ) : (
+            <div className="flex items-center justify-center gap-1 w-full py-2 bg-muted text-muted-foreground rounded font-semibold text-[11px] cursor-not-allowed">
+              <ExternalLink className="w-3 h-3" /> No exchange link available
+            </div>
+          )}
           {showPlaced && <div className="bg-primary/10 border border-primary/30 rounded p-2 text-[11px] text-primary">Paper plan saved locally.</div>}
           <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><AlertTriangle className="w-3 h-3" />Fee source: {feeModel?.source ?? 'default config'}</div>
         </div>
