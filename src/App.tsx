@@ -15,7 +15,15 @@ import AutoTradePage from "@/pages/AutoTradePage";
 import AppLayout from "@/components/AppLayout";
 import NotFound from "@/pages/NotFound";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      gcTime: 1000 * 60 * 30, // keep cache 30 min after unmount
+      staleTime: 1000 * 60 * 10, // data stays fresh 10 min
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 const AppRoutes = () => {
   const { isLoggedIn } = useApp();
