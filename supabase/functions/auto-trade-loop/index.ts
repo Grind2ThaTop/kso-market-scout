@@ -460,40 +460,46 @@ Deno.serve(async (req) => {
         executed_at: orderStatus === "filled" ? new Date().toISOString() : null,
       });
 
-      // Update daily PnL
-      if (dailyPnl) {
-        await supabase.from("daily_pnl").update({ trade_count: dailyPnl.trade_count + executed.length + 1 }).eq("id", dailyPnl.id);
-      } else {
-        await supabase.from("daily_pnl").insert({ user_id: userId, trade_date: today, trade_count: 1 });
-      }
+      // Update daily PnL / execution list only for successful orders
+      if (orderStatus === "filled" || orderStatus === "pending") {
+        if (dailyPnl) {
+          await supabase.from("daily_pnl").update({ trade_count: dailyPnl.trade_count + executed.length + 1 }).eq("id", dailyPnl.id);
+        } else {
+          await supabase.from("daily_pnl").insert({ user_id: userId, trade_date: today, trade_count: 1 });
+        }
 
-      executed.push({
-        marketId: signal.marketId, title: signal.marketTitle,
-        side, provider: signal.provider,
-        mode: settings.paper_mode ? "paper" : "live",
-        orderId: providerOrderId ?? undefined,
-      });
+        executed.push({
+          marketId: signal.marketId, title: signal.marketTitle,
+          side, provider: signal.provider,
+          mode: settings.paper_mode ? "paper" : "live",
+          orderId: providerOrderId ?? undefined,
+        });
+      } else {
+        skipped++;
+      }
     }
 
     // Update engine run
     await updateRun({
-      status: "completed",
+      status: executed.length > 0 ? "completed" : "error",
       signals_found: allSignals.length,
       trades_executed: executed.length,
       trades_skipped: skipped,
+      error_message: executed.length === 0 && !settings.paper_mode ? "No live trades executed. Check exchange authentication/signatures." : null,
       details: { trades: executed, qualified: qualifiedSignals.length },
     });
 
     console.log(`[ENGINE] Completed: ${executed.length} trades, ${skipped} skipped`);
 
     return new Response(JSON.stringify({
-      status: "completed",
+      status: executed.length > 0 ? "completed" : "error",
       signals: allSignals.length,
       qualified: qualifiedSignals.length,
       executed: executed.length,
       skipped,
       trades: executed,
       paperMode: settings.paper_mode,
+      reason: executed.length === 0 && !settings.paper_mode ? "No live trades executed. Exchange authentication failed." : undefined,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (err) {

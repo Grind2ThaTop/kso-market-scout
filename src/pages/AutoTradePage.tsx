@@ -328,7 +328,7 @@ const AutoTradePage = () => {
           error: poly.error ?? null,
         });
       }
-      toast.success('Synced accounts');
+      toast.success(kalshi?.balance ? 'Synced accounts' : 'Sync completed, but Kalshi authentication failed');
     },
     onError: (err) => {
       persistExchangeBalance({ ...exchangeBalance, lastSynced: new Date().toLocaleTimeString(), error: String(err) });
