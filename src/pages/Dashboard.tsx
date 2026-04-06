@@ -47,6 +47,9 @@ const Dashboard = () => {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [filterDirection, setFilterDirection] = useState<FilterDirection>('ALL');
   const [filterCategory, setFilterCategory] = useState<FilterCategory>('all');
+  const [filterExchange, setFilterExchange] = useState<FilterExchange>('all');
+  const [filterVolume, setFilterVolume] = useState<FilterVolume>('all');
+  const [filterExpiry, setFilterExpiry] = useState<FilterExpiry>('all');
 
   // All hooks MUST be above early returns
   const signals = data?.signals ?? [];
