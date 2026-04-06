@@ -17,6 +17,7 @@ import {
 import { useMarketScanner } from '@/hooks/useMarketScanner';
 import { scannerConfig } from '@/data/liveApi';
 import { buildOutcomeTradeUrl } from '@/lib/marketUrlBuilder';
+import { formatExpiryFilterLabel, getHoursUntil, matchesExpiryFilter } from '@/lib/marketMetadata';
 import { getFreshnessStatus, freshnessColors, SignalDirection, Market } from '@/data/types';
 
 const fmt = (n: number) => `$${n.toFixed(0)}`;
@@ -28,7 +29,7 @@ type FilterDirection = 'ALL' | SignalDirection;
 type FilterCategory = 'all' | 'sports' | 'politics' | 'economics' | 'weather' | 'culture' | 'crypto' | 'tech' | 'science' | 'entertainment' | 'finance' | 'health' | 'legal' | 'other';
 type FilterExchange = 'all' | 'kalshi' | 'polymarket';
 type FilterVolume = 'all' | '1k' | '10k' | '100k';
-type FilterExpiry = 'all' | '1h' | '24h' | '7d' | '30d';
+type FilterExpiry = 'all' | '1h' | 'today' | '24h' | '7d' | '30d';
 type ViewMode = 'markets' | 'signals';
 
 const directionIcon = (d: SignalDirection) => {
@@ -43,20 +44,8 @@ const directionColor = (d: SignalDirection) => {
   return 'text-muted-foreground';
 };
 
-const timeToHours = (value: string) => {
-  if (!value) return Number.POSITIVE_INFINITY;
-  if (value.toLowerCase() === 'expired') return Number.NEGATIVE_INFINITY;
-  if (value.toLowerCase() === 'unknown') return Number.POSITIVE_INFINITY;
-  const match = value.match(/^(\d+)([mhd])$/i);
-  if (!match) return Number.POSITIVE_INFINITY;
-  const amount = Number(match[1]);
-  if (match[2] === 'm') return amount / 60;
-  return match[2].toLowerCase() === 'd' ? amount * 24 : amount;
-};
-
 const getMarketHoursToExpiry = (eventEnd: string) => {
-  const hours = (new Date(eventEnd).getTime() - Date.now()) / 3_600_000;
-  return Number.isFinite(hours) ? hours : Number.POSITIVE_INFINITY;
+  return getHoursUntil(eventEnd);
 };
 
 const getMarketExpiryLabel = (eventEnd: string) => {
@@ -101,13 +90,7 @@ const Dashboard = () => {
     }
 
     if (filterExpiry !== 'all') {
-      filtered = filtered.filter((market) => {
-        const hrs = getMarketHoursToExpiry(market.eventEnd);
-        if (filterExpiry === '1h') return hrs > 0 && hrs <= 1;
-        if (filterExpiry === '24h') return hrs > 0 && hrs <= 24;
-        if (filterExpiry === '7d') return hrs > 0 && hrs <= 168;
-        return hrs > 0 && hrs <= 720;
-      });
+      filtered = filtered.filter((market) => matchesExpiryFilter(market.eventEnd, filterExpiry));
     }
 
     return filtered;
@@ -148,11 +131,8 @@ const Dashboard = () => {
 
     if (filterExpiry !== 'all') {
       filtered = filtered.filter((signal) => {
-        const hrs = timeToHours(signal.timeToExpiry);
-        if (filterExpiry === '1h') return hrs <= 1;
-        if (filterExpiry === '24h') return hrs <= 24;
-        if (filterExpiry === '7d') return hrs <= 168;
-        return hrs <= 720;
+        const market = markets.find((m) => m.id === signal.marketId);
+        return market ? matchesExpiryFilter(market.eventEnd, filterExpiry) : false;
       });
     }
 
@@ -176,7 +156,7 @@ const Dashboard = () => {
         case 'spread': result = (quoteA?.spread ?? 0) - (quoteB?.spread ?? 0); break;
         case 'score': result = a.score - b.score; break;
         case 'confidence': result = a.confidence - b.confidence; break;
-        case 'time': result = timeToHours(a.timeToExpiry) - timeToHours(b.timeToExpiry); break;
+        case 'time': result = getMarketHoursToExpiry(marketA?.eventEnd ?? '') - getMarketHoursToExpiry(marketB?.eventEnd ?? ''); break;
         case 'volume': result = (marketA?.volume24h ?? 0) - (marketB?.volume24h ?? 0); break;
         case 'rr': result = a.riskReward - b.riskReward; break;
         default: result = 0;
@@ -221,14 +201,14 @@ const Dashboard = () => {
     filterExchange !== 'all' ? (filterExchange === 'kalshi' ? 'Kalshi' : 'Polymarket') : null,
     filterDirection !== 'ALL' ? filterDirection : null,
     filterVolume !== 'all' ? `vol ≥ $${filterVolume}` : null,
-    filterExpiry !== 'all' ? `≤${filterExpiry}` : null,
+    filterExpiry !== 'all' ? formatExpiryFilterLabel(filterExpiry) : null,
     filterCategory !== 'all' ? filterCategory : null,
   ].filter(Boolean).join(' · ');
 
   const activeMarketFilterLabel = [
     filterExchange !== 'all' ? (filterExchange === 'kalshi' ? 'Kalshi' : 'Polymarket') : null,
     filterVolume !== 'all' ? `vol ≥ $${filterVolume}` : null,
-    filterExpiry !== 'all' ? `≤${filterExpiry}` : null,
+    filterExpiry !== 'all' ? formatExpiryFilterLabel(filterExpiry) : null,
     filterCategory !== 'all' ? filterCategory : null,
   ].filter(Boolean).join(' · ');
 
@@ -427,20 +407,20 @@ const Dashboard = () => {
         <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
           <span>Exp:</span>
         </div>
-        {(['all', '1h', '24h', '7d', '30d'] as FilterExpiry[]).map((expiry) => (
+        {(['all', '1h', 'today', '24h', '7d', '30d'] as FilterExpiry[]).map((expiry) => (
           <button
             key={expiry}
             onClick={() => setFilterExpiry(expiry)}
             className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-colors shrink-0 ${filterExpiry === expiry ? 'bg-primary/20 text-primary' : 'bg-surface-2 text-muted-foreground hover:text-foreground'}`}
           >
-            {expiry === 'all' ? 'ALL' : `≤${expiry}`}
+            {expiry === 'all' ? 'ALL' : expiry === 'today' ? 'TODAY' : `≤${expiry}`}
           </button>
         ))}
 
         <span className="text-muted-foreground shrink-0">|</span>
 
         <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">Category:</div>
-        {(['all', 'sports', 'politics', 'economics', 'crypto', 'tech', 'finance', 'weather', 'entertainment', 'science', 'health', 'legal', 'other'] as FilterCategory[]).map((category) => (
+        {(['all', 'sports', 'politics', 'economics', 'crypto', 'tech', 'finance', 'weather', 'culture', 'entertainment', 'science', 'health', 'legal', 'other'] as FilterCategory[]).map((category) => (
           <button
             key={category}
             onClick={() => setFilterCategory(category)}
@@ -576,7 +556,7 @@ const Dashboard = () => {
                       <button onClick={resetFilters} className="px-3 py-1.5 rounded-md bg-primary/15 text-primary text-xs font-semibold">
                         Reset filters
                       </button>
-                      {filterExchange === 'kalshi' && filterExpiry === '24h' && (
+                      {filterExchange === 'kalshi' && (filterExpiry === 'today' || filterExpiry === '24h') && (
                         <button onClick={() => setFilterExpiry('7d')} className="px-3 py-1.5 rounded-md bg-surface-2 text-foreground text-xs font-semibold">
                           Try ≤7D
                         </button>
@@ -658,7 +638,7 @@ const Dashboard = () => {
                               <button onClick={resetFilters} className="px-3 py-1.5 rounded-md bg-primary/15 text-primary text-xs font-semibold">
                                 Reset filters
                               </button>
-                              {filterExchange === 'kalshi' && filterExpiry === '24h' && (
+                              {filterExchange === 'kalshi' && (filterExpiry === 'today' || filterExpiry === '24h') && (
                                 <button onClick={() => setFilterExpiry('7d')} className="px-3 py-1.5 rounded-md bg-surface-2 text-foreground text-xs font-semibold">
                                   Try ≤7D
                                 </button>

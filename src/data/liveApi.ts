@@ -1,5 +1,6 @@
 import { Market, QuoteSnapshot, Signal, SignalDirection, TradingProfile } from './types';
 import { buildMarketUrl } from '@/lib/marketUrlBuilder';
+import { inferMarketCategory } from '@/lib/marketMetadata';
 
 const DEFAULT_POLL_MS = 15000;
 
@@ -28,22 +29,6 @@ const parseArray = (payload: unknown): unknown[] => {
     if (Array.isArray(markets)) return markets;
   }
   return [];
-};
-
-const normalizeCategory = (value: unknown): Market['category'] => {
-  const raw = String(value ?? '').toLowerCase();
-  if (raw.includes('sport') || raw.includes('nba') || raw.includes('nfl') || raw.includes('ufc') || raw.includes('mlb') || raw.includes('nhl') || raw.includes('soccer') || raw.includes('tennis') || raw.includes('golf') || raw.includes('f1') || raw.includes('boxing') || raw.includes('mma') || raw.includes('ncaa') || raw.includes('fifa') || raw.includes('olympics') || raw.includes('lakers') || raw.includes('celtics') || raw.includes('warriors') || raw.includes('yankees') || raw.includes('dodgers') || raw.includes('chiefs') || raw.includes('eagles') || raw.includes('premier league') || raw.includes('epl') || raw.includes('champions league') || raw.includes('world cup') || raw.includes('super bowl') || raw.includes('playoff') || raw.includes('stanley cup') || raw.includes('world series') || raw.includes('march madness') || raw.includes('wnba') || raw.includes('pga') || raw.includes('nascar') || raw.includes('formula') || raw.includes('grand prix') || raw.includes('wimbledon') || raw.includes('us open') || raw.includes('serie a') || raw.includes('la liga') || raw.includes('bundesliga') || raw.includes('cricket') || raw.includes('rugby')) return 'sports';
-  if (raw.includes('polit') || raw.includes('elect') || raw.includes('senate') || raw.includes('congress') || raw.includes('president') || raw.includes('governor') || raw.includes('democrat') || raw.includes('republican') || raw.includes('vote') || raw.includes('geopolit') || raw.includes('war') || raw.includes('nato') || raw.includes('government')) return 'politics';
-  if (raw.includes('weath') || raw.includes('temp') || raw.includes('rain') || raw.includes('snow') || raw.includes('hurricane') || raw.includes('tornado') || raw.includes('climate') || raw.includes('wildfire') || raw.includes('earthquake')) return 'weather';
-  if (raw.includes('cult') || raw.includes('entertain') || raw.includes('movie') || raw.includes('music') || raw.includes('oscar') || raw.includes('grammy') || raw.includes('celebrity') || raw.includes('tv') || raw.includes('social media') || raw.includes('tiktok') || raw.includes('youtube') || raw.includes('awards')) return 'entertainment';
-  if (raw.includes('crypto') || raw.includes('bitcoin') || raw.includes('ethereum') || raw.includes('btc') || raw.includes('eth') || raw.includes('token') || raw.includes('defi') || raw.includes('nft') || raw.includes('web3') || raw.includes('blockchain') || raw.includes('solana')) return 'crypto';
-  if (raw.includes('tech') || raw.includes('ai') || raw.includes('artificial') || raw.includes('apple') || raw.includes('google') || raw.includes('microsoft') || raw.includes('openai') || raw.includes('spacex') || raw.includes('tesla') || raw.includes('meta') || raw.includes('nvidia') || raw.includes('semiconductor') || raw.includes('software')) return 'tech';
-  if (raw.includes('science') || raw.includes('space') || raw.includes('nasa') || raw.includes('physics') || raw.includes('biology') || raw.includes('research')) return 'science';
-  if (raw.includes('financ') || raw.includes('stock') || raw.includes('stock market') || raw.includes('fed') || raw.includes('interest rate') || raw.includes('gdp') || raw.includes('inflation') || raw.includes('recession') || raw.includes('s&p') || raw.includes('nasdaq') || raw.includes('dow') || raw.includes('treasury') || raw.includes('bond') || raw.includes('forex') || raw.includes('commodity') || raw.includes('oil') || raw.includes('gold')) return 'finance';
-  if (raw.includes('econ') || raw.includes('cpi') || raw.includes('employment') || raw.includes('jobs') || raw.includes('wage') || raw.includes('tariff') || raw.includes('housing')) return 'economics';
-  if (raw.includes('health') || raw.includes('covid') || raw.includes('fda') || raw.includes('pharma') || raw.includes('vaccine') || raw.includes('disease') || raw.includes('medical') || raw.includes('drug') || raw.includes('pandemic')) return 'health';
-  if (raw.includes('legal') || raw.includes('court') || raw.includes('supreme') || raw.includes('lawsuit') || raw.includes('trial') || raw.includes('verdict') || raw.includes('regulation') || raw.includes('law')) return 'legal';
-  return 'other';
 };
 
 const inferQuote = (row: Record<string, unknown>) => {
@@ -360,8 +345,32 @@ const normalizeRows = (rows: unknown[], fetchedAt: string) => {
         marketSlug,
         eventSlug,
         seriesSlug,
-        category: normalizeCategory(
-          `${row.category ?? row.group ?? row.tag ?? sourceRow.category ?? sourceRow.group ?? sourceRow.tag ?? ''} ${title}`
+        category: inferMarketCategory(
+          row.category,
+          row.group,
+          row.tag,
+          row.tags,
+          row._eventCategory,
+          row.eventCategory,
+          row._eventTitle,
+          row.series_ticker,
+          row.seriesSlug,
+          row.eventSlug,
+          row.description,
+          row.rules,
+          sourceRow.category,
+          sourceRow.group,
+          sourceRow.tag,
+          sourceRow.tags,
+          sourceRow._eventCategory,
+          sourceRow.eventCategory,
+          sourceRow._eventTitle,
+          sourceRow.series_ticker,
+          sourceRow.seriesSlug,
+          sourceRow.eventSlug,
+          sourceRow.description,
+          sourceRow.rules,
+          title,
         ),
         eventEnd: eventEnd || fetchedAt,
         settlementRules: pickFirstString(row.rules, row.description, sourceRow.rules, sourceRow.description, row.rules_primary, sourceRow.rules_primary, 'See exchange rules.'),
