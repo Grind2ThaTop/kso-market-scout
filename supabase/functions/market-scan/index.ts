@@ -56,7 +56,7 @@ async function fetchPolymarketMarkets() {
       slug: m.slug ?? m.conditionId,
       conditionSlug: m.conditionId,
       marketSlug: m.slug ?? m.conditionId,
-      category: m.groupItemTitle ?? m.category ?? "economics",
+      category: m.groupItemTitle ?? m.category ?? m.tags?.[0] ?? m.question ?? "other",
       endDate: m.endDate ?? m.end_date,
       rules: m.description ?? "See exchange rules.",
       lastTradePrice: yesPrice,
