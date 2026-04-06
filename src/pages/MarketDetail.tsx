@@ -55,25 +55,61 @@ const MarketDetail = () => {
   };
 
   const cleanScrapedContent = (raw: string): string => {
-    // Remove navigation/sidebar noise from exchange pages
+    // Strategy: find the first H1/H2 heading that looks like the market title,
+    // then keep everything from that point. This skips all nav/sidebar junk.
+    const titleWords = market.title.toLowerCase().split(/\s+/).filter(w => w.length > 3).slice(0, 3);
+
     const lines = raw.split('\n');
-    const filtered = lines.filter(line => {
-      const t = line.trim();
-      // Skip empty lines at start
-      if (!t) return true;
-      // Skip polymarket nav links
-      if (/^\[?(Live|Futures|All Sports|NBA|NFL|NHL|UFC|Soccer|Football|NCAAB|UCL|MLS|EPL|La Liga|Serie A)\]?\(?https?:\/\/polymarket/i.test(t)) return false;
-      if (/^\[!\[/.test(t) && /polymarket/.test(t)) return false; // image links to polymarket
-      if (/^(Süper Lig|Liga MX|Norway|Brazil|Zuffa|CFB)\b/i.test(t)) return false;
-      // Skip kalshi nav
-      if (/^\[?(Browse|Live\d|Portfolio|Search|Ideas|Trending)\]?/i.test(t)) return false;
-      // Skip lines that are just numbers or sport counts
-      if (/^\d+\]?\(?https/.test(t)) return false;
-      return true;
-    });
-    // Trim leading blank lines
-    const result = filtered.join('\n').replace(/^\n+/, '').trim();
-    return result || 'No meaningful content extracted.';
+    let startIdx = -1;
+
+    // Find the line with the market's actual heading
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim().toLowerCase();
+      if (line.startsWith('#')) {
+        const matchCount = titleWords.filter(w => line.includes(w)).length;
+        if (matchCount >= Math.min(2, titleWords.length)) {
+          startIdx = i;
+          break;
+        }
+      }
+    }
+
+    // If no heading match found, try to find "Market Rules" or "Resolution" section
+    if (startIdx === -1) {
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim().toLowerCase();
+        if (/^#+\s*(market\s*rules|resolution|description|about)/i.test(lines[i].trim())) {
+          startIdx = i;
+          break;
+        }
+      }
+    }
+
+    // Fallback: skip everything before the first substantial paragraph (>80 chars, no links)
+    if (startIdx === -1) {
+      for (let i = 0; i < lines.length; i++) {
+        const t = lines[i].trim();
+        if (t.length > 80 && !t.startsWith('[') && !t.startsWith('!') && !t.includes('polymarket.com/sports')) {
+          startIdx = i;
+          break;
+        }
+      }
+    }
+
+    if (startIdx === -1) return 'Could not extract meaningful market content. Try visiting the exchange page directly.';
+
+    const relevant = lines.slice(startIdx).join('\n');
+
+    // Clean up remaining nav junk that might appear after the content
+    const cleaned = relevant
+      .replace(/\[!\[.*?\]\(.*?\)\]/g, '')                    // remove image links
+      .replace(/\[([^\]]*)\]\(https?:\/\/polymarket\.com\/sports[^)]*\)/g, '')  // remove sports nav links
+      .replace(/\[([^\]]*)\]\(https?:\/\/kalshi\.com\/markets[^)]*\)/g, '')     // remove kalshi nav links
+      .replace(/^\s*All Sports\s*$/gm, '')
+      .replace(/\n{3,}/g, '\n\n')                             // collapse excessive newlines
+      .trim();
+
+    return cleaned || 'No meaningful content extracted.';
   };
 
   const handleDeepDive = async () => {
