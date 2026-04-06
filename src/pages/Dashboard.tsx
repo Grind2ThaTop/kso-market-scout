@@ -411,7 +411,29 @@ const Dashboard = () => {
             </thead>
             <tbody>
               {sortedSignals.length === 0 && (
-                <tr><td colSpan={12} className="px-3 py-8 text-center text-muted-foreground">No signals match current filters.</td></tr>
+                <tr>
+                  <td colSpan={12} className="px-3 py-8 text-center">
+                    <div className="space-y-3">
+                      <p className="text-muted-foreground">
+                        {rawFilteredMarkets.length === 0
+                          ? `No scanned markets match ${activeFilterLabel || 'these filters'}.`
+                          : `${rawFilteredMarkets.length} scanned markets match ${activeFilterLabel || 'these filters'}, but none qualify as actionable signals.`}
+                      </p>
+                      {hasActiveFilters && (
+                        <div className="flex items-center justify-center gap-2 flex-wrap">
+                          <button onClick={resetFilters} className="px-3 py-1.5 rounded-md bg-primary/15 text-primary text-xs font-semibold">
+                            Reset filters
+                          </button>
+                          {filterExchange === 'kalshi' && filterExpiry === '24h' && (
+                            <button onClick={() => setFilterExpiry('7d')} className="px-3 py-1.5 rounded-md bg-surface-2 text-foreground text-xs font-semibold">
+                              Try ≤7D
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                </tr>
               )}
               {sortedSignals.map(sig => {
                 const mkt = markets.find(m => m.id === sig.marketId);
