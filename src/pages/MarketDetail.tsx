@@ -6,6 +6,8 @@ import { useIntegratedFeeModel } from '@/integrations/useIntegratedFeeModel';
 import { buildOutcomeTradeUrl } from '@/lib/marketUrlBuilder';
 import { getFreshnessStatus, freshnessColors } from '@/data/types';
 import { firecrawlApi } from '@/lib/api/firecrawl';
+import { trackTrade } from '@/lib/tradeTracker';
+import { useToast } from '@/hooks/use-toast';
 
 const MarketDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -14,6 +16,7 @@ const MarketDetail = () => {
   const { data: feeModel } = useIntegratedFeeModel();
   const [size, setSize] = useState(25);
   const [showPlaced, setShowPlaced] = useState(false);
+  const { toast } = useToast();
 
   // Deep dive state
   const [deepDiveData, setDeepDiveData] = useState<string | null>(null);
@@ -137,6 +140,26 @@ const MarketDetail = () => {
     } finally {
       setDeepDiveLoading(false);
     }
+  };
+
+
+  const handleTrackTrade = () => {
+    trackTrade({
+      market,
+      side: side.toUpperCase() as 'YES' | 'NO',
+      entryPrice,
+      size,
+      stopPrice,
+      setupType: signal?.setupType,
+      confidenceAtEntry: signal?.confidence ?? 0,
+      signalScoreAtEntry: signal?.score ?? 0,
+      notes: signal ? `Signal thesis: ${signal.thesis}` : undefined,
+    });
+
+    toast({
+      title: 'Trade tracked',
+      description: 'Added to Journal as an open paper trade.',
+    });
   };
 
   const DirectionBadge = () => {
@@ -268,6 +291,7 @@ const MarketDetail = () => {
             <div className="flex justify-between"><span>P&L if Stopped</span><span className="text-loss">${projectedPnlStop.toFixed(2)}</span></div>
           </div>
           <button onClick={() => setShowPlaced(true)} className="w-full py-2 bg-primary text-primary-foreground rounded font-semibold text-[11px]">Save Paper Plan</button>
+          <button onClick={handleTrackTrade} className="w-full py-2 bg-secondary text-secondary-foreground rounded font-semibold text-[11px] hover:bg-secondary/80">Track Trade</button>
           {market.market_url ? (
             <a href={buildOutcomeTradeUrl(market, side)} target="_blank" rel="noreferrer"
               className="flex items-center justify-center gap-1 w-full py-2 bg-accent text-accent-foreground rounded font-semibold text-[11px] hover:bg-accent/90">

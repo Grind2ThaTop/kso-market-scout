@@ -4,6 +4,8 @@ import { Link } from 'react-router-dom';
 import { useMarketScanner } from '@/hooks/useMarketScanner';
 import { DEMO_STRATEGIES, DEMO_BACKTESTS } from '@/data/demoData';
 import { buildOutcomeTradeUrl } from '@/lib/marketUrlBuilder';
+import { trackTrade } from '@/lib/tradeTracker';
+import { useToast } from '@/hooks/use-toast';
 
 const fmtPct = (n: number) => `${(n * 100).toFixed(1)}%`;
 const fmtC = (n: number) => `${(n * 100).toFixed(0)}¢`;
@@ -16,6 +18,7 @@ const StrategyLab = () => {
   const [simExit, setSimExit] = useState(0.60);
   const [simSize, setSimSize] = useState(25);
   const [simSide, setSimSide] = useState<'YES' | 'NO'>('YES');
+  const { toast } = useToast();
 
   const markets = data?.markets ?? [];
   const signals = data?.signals ?? [];
@@ -45,6 +48,34 @@ const StrategyLab = () => {
   }, [strategy, signals, markets]);
 
   const backtest = DEMO_BACKTESTS.find(b => b.strategyName === strategy?.name);
+
+  const handleTrackTrade = (
+    side: 'YES' | 'NO',
+    market: NonNullable<(typeof strategyMatches)[number]['market']>,
+    signalScore: number,
+    confidence: number,
+    setupType: string,
+    stopPrice: number,
+  ) => {
+    const entryPrice = side === 'YES' ? market.yesPrice : market.noPrice;
+
+    trackTrade({
+      market,
+      side,
+      entryPrice,
+      stopPrice,
+      size: 25,
+      confidenceAtEntry: confidence,
+      signalScoreAtEntry: signalScore,
+      setupType,
+    });
+
+    toast({
+      title: `${side} trade tracked`,
+      description: 'Saved to Journal as an open paper trade.',
+    });
+  };
+
 
   return (
     <div className="flex-1 overflow-auto p-4 space-y-4">
@@ -194,6 +225,7 @@ const StrategyLab = () => {
                       <div className="flex items-center gap-1">
                         <a href={buildOutcomeTradeUrl(m, 'yes')} target="_blank" rel="noreferrer" className="px-2 py-0.5 rounded text-[10px] font-bold bg-profit/15 text-profit hover:bg-profit/25">YES</a>
                         <a href={buildOutcomeTradeUrl(m, 'no')} target="_blank" rel="noreferrer" className="px-2 py-0.5 rounded text-[10px] font-bold bg-loss/15 text-loss hover:bg-loss/25">NO</a>
+                        <button onClick={() => handleTrackTrade(s.direction === 'NO' ? 'NO' : 'YES', m, s.score, s.confidence, s.setupType, s.invalidationPrice)} className="px-2 py-0.5 rounded text-[10px] font-bold bg-primary/15 text-primary hover:bg-primary/25">Track</button>
                       </div>
                     ) : (
                       <span className="text-[10px] text-muted-foreground flex items-center gap-1"><ExternalLink className="w-3 h-3" /> N/A</span>
