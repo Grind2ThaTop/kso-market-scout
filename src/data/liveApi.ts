@@ -80,7 +80,7 @@ const inferQuote = (row: Record<string, unknown>) => {
 
 export interface ScanSnapshot {
   fetchedAt: string;
-  source: 'live-api' | 'integrations-api' | 'demo';
+  source: 'live-api' | 'live-edge' | 'integrations-api' | 'demo';
   markets: Market[];
   quotes: QuoteSnapshot[];
   signals: Signal[];
@@ -384,11 +384,28 @@ const normalizeRows = (rows: unknown[], fetchedAt: string) => {
   };
 };
 
+async function fetchViaEdgeFunction(): Promise<{ rows: unknown[]; providerStatus: Record<string, 'connected' | 'error' | 'empty'> }> {
+  const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+  const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  if (!projectId || !anonKey) return { rows: [], providerStatus: {} };
+
+  const res = await fetch(`https://${projectId}.supabase.co/functions/v1/market-scan`, {
+    headers: { apikey: anonKey, 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) throw new Error(`market-scan returned ${res.status}`);
+  const data = await res.json();
+  return {
+    rows: data.markets ?? [],
+    providerStatus: data.providerStatus ?? {},
+  };
+}
+
 export async function fetchScanSnapshot(): Promise<ScanSnapshot> {
   const fetchedAt = new Date().toISOString();
   const providerStatus: Record<string, 'connected' | 'error' | 'empty'> = {};
 
   try {
+    // Priority 1: Direct API URL if configured
     if (scannerConfig.apiUrl) {
       const headers: HeadersInit = { Accept: 'application/json' };
       if (scannerConfig.apiKey) {
@@ -403,25 +420,38 @@ export async function fetchScanSnapshot(): Promise<ScanSnapshot> {
       return { fetchedAt, source: 'live-api', markets, quotes, signals, droppedCount, providerStatus: { api: 'connected' } };
     }
 
-    const result = await fetchIntegrationMarketsBestEffort();
-    Object.assign(providerStatus, result.providerStatus);
+    // Priority 2: Edge function (fetches Kalshi + Polymarket server-side, bypasses CORS)
+    let result: { rows: unknown[]; providerStatus: Record<string, 'connected' | 'error' | 'empty'> } | null = null;
+    try {
+      result = await fetchViaEdgeFunction();
+    } catch (e) {
+      console.warn('Edge function market-scan failed, trying integrations API:', e);
+    }
 
-    if (result.rows.length === 0) {
-      // No live data at all - fall back to demo
+    // Priority 3: Integrations server fallback
+    if (!result || result.rows.length === 0) {
+      const intResult = await fetchIntegrationMarketsBestEffort();
+      if (intResult.rows.length > 0) {
+        result = intResult;
+      }
+    }
+
+    if (!result || result.rows.length === 0) {
+      Object.assign(providerStatus, result?.providerStatus ?? {});
       const { DEMO_MARKETS, DEMO_QUOTES, DEMO_SIGNALS } = await import('./demoData');
       return { fetchedAt, source: 'demo', markets: DEMO_MARKETS, quotes: DEMO_QUOTES, signals: DEMO_SIGNALS, droppedCount: 0, providerStatus };
     }
 
+    Object.assign(providerStatus, result.providerStatus);
     const { markets, quotes, droppedCount } = normalizeRows(result.rows, fetchedAt);
 
     if (markets.length === 0) {
-      // All markets were filtered out (stale/dead) - fall back to demo
       const { DEMO_MARKETS, DEMO_QUOTES, DEMO_SIGNALS } = await import('./demoData');
       return { fetchedAt, source: 'demo', markets: DEMO_MARKETS, quotes: DEMO_QUOTES, signals: DEMO_SIGNALS, droppedCount, providerStatus };
     }
 
     const signals = buildSignals(markets, quotes);
-    return { fetchedAt, source: 'integrations-api', markets, quotes, signals, droppedCount, providerStatus };
+    return { fetchedAt, source: 'live-edge', markets, quotes, signals, droppedCount, providerStatus };
   } catch {
     const { DEMO_MARKETS, DEMO_QUOTES, DEMO_SIGNALS } = await import('./demoData');
     return { fetchedAt, source: 'demo', markets: DEMO_MARKETS, quotes: DEMO_QUOTES, signals: DEMO_SIGNALS, droppedCount: 0, providerStatus };

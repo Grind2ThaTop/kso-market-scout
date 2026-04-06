@@ -92,31 +92,59 @@ async function fetchPolymarketMarkets(): Promise<RawMarket[]> {
 
 async function fetchKalshiMarkets(): Promise<RawMarket[]> {
   try {
-    const res = await fetch(`${KALSHI_BASE}/markets?limit=80&status=open`, {
+    const res = await fetch(`${KALSHI_BASE}/events?limit=100&status=open&with_nested_markets=true`, {
       headers: { "Content-Type": "application/json" },
     });
     if (!res.ok) return [];
     const data = await res.json();
-    const markets = data.markets ?? [];
-    return markets.map((m: any) => {
-      const yesPrice = (m.yes_bid ?? m.last_price ?? 50) / 100;
-      const noPrice = 1 - yesPrice;
-      return {
-        id: m.ticker ?? m.id,
-        title: m.title ?? m.subtitle ?? "Untitled",
-        platform: "kalshi" as const,
-        yesPrice, noPrice,
-        volume24h: m.volume_24h ?? m.volume ?? 0,
-        liquidityScore: Math.min(100, (m.liquidity ?? m.open_interest ?? 0) / 50),
-        spread: Math.abs((m.yes_ask ?? yesPrice + 0.01) - (m.yes_bid ?? yesPrice - 0.01)) / 100,
-        bestYesAsk: (m.yes_ask ?? (yesPrice * 100 + 1)) / 100,
-        bestNoAsk: (m.no_ask ?? (noPrice * 100 + 1)) / 100,
-        momentum1h: 0,
-        momentum24h: 0,
-        eventEnd: m.close_time ?? m.expiration_time ?? new Date(Date.now() + 86400000).toISOString(),
-        marketSlug: m.ticker,
-      };
-    });
+    const events = data.events ?? [];
+    const allMarkets: any[] = [];
+    for (const event of events) {
+      for (const m of (event.markets ?? [])) {
+        m._eventTitle = event.title;
+        allMarkets.push(m);
+      }
+    }
+    const parseDollars = (v: any) => Number(String(v ?? "0").replace(/[^0-9.\-]/g, "")) || 0;
+
+    return allMarkets
+      .filter((m: any) => {
+        const ticker = m.ticker ?? "";
+        if (ticker.startsWith("KXMVE")) return false;
+        const yesBid = parseDollars(m.yes_bid_dollars);
+        const yesAsk = parseDollars(m.yes_ask_dollars);
+        if (yesBid === 0 && yesAsk === 0) return false;
+        const oi = parseDollars(m.open_interest_fp);
+        const vol = parseDollars(m.volume_fp);
+        if (oi === 0 && vol === 0) return false;
+        const lastPrice = parseDollars(m.last_price_dollars);
+        if (lastPrice >= 0.90 || (lastPrice > 0 && lastPrice <= 0.10)) return false;
+        return true;
+      })
+      .map((m: any) => {
+        const yesBid = parseDollars(m.yes_bid_dollars);
+        const yesAsk = parseDollars(m.yes_ask_dollars);
+        const lastPrice = parseDollars(m.last_price_dollars);
+        const noPrice = 1 - lastPrice;
+        const oi = parseDollars(m.open_interest_fp);
+        const vol = parseDollars(m.volume_24h_fp) || parseDollars(m.volume_fp);
+        const prevPrice = parseDollars(m.previous_price_dollars);
+        return {
+          id: m.ticker ?? m.id,
+          title: m.title ?? m._eventTitle ?? "Untitled",
+          platform: "kalshi" as const,
+          yesPrice: lastPrice, noPrice,
+          volume24h: vol,
+          liquidityScore: Math.min(100, oi / 50),
+          spread: Math.abs(yesAsk - yesBid),
+          bestYesAsk: yesAsk,
+          bestNoAsk: parseDollars(m.no_ask_dollars),
+          momentum1h: 0,
+          momentum24h: prevPrice > 0 ? lastPrice - prevPrice : 0,
+          eventEnd: m.close_time ?? m.expiration_time ?? new Date(Date.now() + 86400000).toISOString(),
+          marketSlug: m.ticker,
+        };
+      });
   } catch (e) {
     console.error("Kalshi fetch error:", e);
     return [];
