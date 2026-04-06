@@ -484,17 +484,19 @@ const Dashboard = () => {
             </div>
 
             {/* Summary totals */}
-            <div className="grid grid-cols-3 gap-3 p-4 border-b border-border">
+            <div className="grid grid-cols-3 gap-2 md:gap-3 p-3 md:p-4 border-b border-border">
               {totals.map(t => (
-                <div key={t.stake} className="bg-surface-2 rounded-lg p-3 text-center">
-                  <div className="text-[10px] text-muted-foreground mb-1">@ ${t.stake}/trade</div>
-                  <div className={`text-xl font-bold font-mono ${t.totalNet >= 0 ? 'text-profit' : 'text-loss'}`}>
+                <div key={t.stake} className="bg-surface-2 rounded-lg p-2 md:p-3 text-center">
+                  <div className="text-[9px] md:text-[10px] text-muted-foreground mb-0.5 md:mb-1">@ ${t.stake}/trade</div>
+                  <div className={`text-base md:text-xl font-bold font-mono ${t.totalNet >= 0 ? 'text-profit' : 'text-loss'}`}>
                     ${t.totalNet.toFixed(2)}
                   </div>
-                  <div className="text-[10px] text-muted-foreground mt-1">
+                  <div className="text-[8px] md:text-[10px] text-muted-foreground mt-0.5 md:mt-1">
                     ROI: <span className={t.roi >= 0 ? 'text-profit' : 'text-loss'}>{t.roi.toFixed(1)}%</span>
-                    {' · '}Fees: <span className="text-loss">${t.totalFees.toFixed(2)}</span>
-                    {' · '}Slip: <span className="text-loss">${t.totalSlip.toFixed(2)}</span>
+                    <span className="hidden sm:inline">
+                      {' · '}Fees: <span className="text-loss">${t.totalFees.toFixed(2)}</span>
+                      {' · '}Slip: <span className="text-loss">${t.totalSlip.toFixed(2)}</span>
+                    </span>
                   </div>
                 </div>
               ))}
