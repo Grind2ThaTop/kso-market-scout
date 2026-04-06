@@ -234,8 +234,8 @@ async function fetchKalshiPublicMarkets() {
 }
 
 async function fetchKalshiAuthMarkets(): Promise<any[]> {
-  const headers = signKalshi("GET", "/markets?limit=200&status=open");
-  if (!headers) {
+  const testHeaders = await signKalshi("GET", "/markets");
+  if (!testHeaders) {
     console.log("[scan] Kalshi auth: no credentials, skipping");
     return [];
   }
@@ -243,12 +243,12 @@ async function fetchKalshiAuthMarkets(): Promise<any[]> {
   const allMarkets: any[] = [];
   let cursor = "";
   let pages = 0;
-  const MAX_PAGES = 5; // up to 1000 markets from authenticated API
+  const MAX_PAGES = 5;
 
   while (pages < MAX_PAGES) {
     const cursorParam = cursor ? `&cursor=${cursor}` : "";
     const path = `/markets?limit=200&status=open${cursorParam}`;
-    const authHeaders = signKalshi("GET", path);
+    const authHeaders = await signKalshi("GET", path);
     if (!authHeaders) break;
 
     try {
