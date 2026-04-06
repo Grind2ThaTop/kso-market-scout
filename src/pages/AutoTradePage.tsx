@@ -345,7 +345,8 @@ const AutoTradePage = () => {
   const livePnl = livePositions.reduce((s, p) => s + (p.pnl ?? 0), 0);
   const totalPnl = positions.reduce((s, p) => s + (p.pnl ?? 0), 0);
   const totalPortfolio = (exchangeBalance.available ?? 0) + (exchangeBalance.total ?? 0) + (polyBalance.available ?? 0);
-  const paperBankrollCurrent = localSettings.paper_bankroll_initial + paperPnl;
+  const paperExposure = paperPositions.filter(p => p.status === 'open').reduce((s, p) => s + p.size, 0);
+  const paperBankrollCurrent = localSettings.paper_bankroll_initial - paperExposure + paperPnl;
   const lastRun = engineRuns[0];
   const engineActive = settings?.enabled && !settings?.kill_switch;
 
@@ -472,6 +473,10 @@ const AutoTradePage = () => {
               <span className={`font-mono font-bold ${paperPnl >= 0 ? 'text-profit' : 'text-loss'}`}>
                 {paperPnl >= 0 ? '+' : ''}${paperPnl.toFixed(2)} ({localSettings.paper_bankroll_initial > 0 ? ((paperPnl / localSettings.paper_bankroll_initial) * 100).toFixed(1) : '0'}%)
               </span>
+            </div>
+            <div className="flex items-center justify-between mt-2 text-[10px] text-muted-foreground">
+              <span>In Trades: ${paperExposure.toFixed(2)}</span>
+              <span>Free Cash: ${paperBankrollCurrent.toFixed(2)}</span>
             </div>
             <div className="flex items-center gap-2 mt-2 text-[10px]">
               <span className="text-muted-foreground">Open: {paperPositions.filter(p => p.status === 'open').length}</span>
