@@ -265,7 +265,7 @@ const AutoTradePage = () => {
 
   const saveMutation = useMutation({
     mutationFn: persistSettings,
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['auto-trade-settings'] }); toast.success('Settings saved'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['auto-trade-settings'] }); },
     onError: (err) => toast.error(String(err)),
   });
 
@@ -583,7 +583,18 @@ const AutoTradePage = () => {
               <p className="text-sm font-medium">Auto-Trade Enabled</p>
               <p className="text-[10px] text-muted-foreground">Engine scans & executes every 5 minutes while ON</p>
             </div>
-            <Switch checked={localSettings.enabled} onCheckedChange={v => setLocalSettings(s => ({ ...s, enabled: v }))} />
+            <Switch checked={localSettings.enabled} onCheckedChange={v => {
+              const next = { ...localSettings, enabled: v };
+              setLocalSettings(next);
+              saveMutation.mutate(next, {
+                onSuccess: () => {
+                  toast.success(v ? '🟢 Auto-Trade enabled' : '🔴 Auto-Trade disabled');
+                  if (v) {
+                    runEngineMutation.mutate();
+                  }
+                },
+              });
+            }} disabled={saveMutation.isPending} />
           </div>
 
           <div className="flex items-center justify-between">
@@ -636,7 +647,7 @@ const AutoTradePage = () => {
             </div>
           </div>
 
-          <Button className="w-full" onClick={() => saveMutation.mutate(localSettings)} disabled={saveMutation.isPending}>
+          <Button className="w-full" onClick={() => saveMutation.mutate(localSettings, { onSuccess: () => toast.success('Settings saved') })} disabled={saveMutation.isPending}>
             {saveMutation.isPending ? 'Saving…' : 'Save Settings'}
           </Button>
         </CardContent>
