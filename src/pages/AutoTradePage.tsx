@@ -337,6 +337,7 @@ const AutoTradePage = () => {
   });
 
   const openPositions = positions.filter(p => p.status === 'open');
+  const marketTitleMap = new Map(positions.map(p => [p.market_id, p.market_title]));
   const paperPositions = positions.filter(p => p.paper_mode);
   const livePositions = positions.filter(p => !p.paper_mode);
   const paperPnl = paperPositions.reduce((s, p) => s + (p.pnl ?? 0), 0);
