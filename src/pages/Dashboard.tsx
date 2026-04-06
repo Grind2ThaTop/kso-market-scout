@@ -331,7 +331,25 @@ const Dashboard = () => {
         {/* Mobile cards */}
         <div className="md:hidden divide-y divide-border/50">
           {sortedSignals.length === 0 && (
-            <div className="px-3 py-8 text-center text-muted-foreground text-sm">No signals match current filters.</div>
+            <div className="px-3 py-8 text-center space-y-3">
+              <p className="text-sm text-muted-foreground">
+                {rawFilteredMarkets.length === 0
+                  ? `No scanned markets match ${activeFilterLabel || 'these filters'}.`
+                  : `${rawFilteredMarkets.length} scanned markets match ${activeFilterLabel || 'these filters'}, but none qualify as actionable signals.`}
+              </p>
+              {hasActiveFilters && (
+                <div className="flex items-center justify-center gap-2 flex-wrap">
+                  <button onClick={resetFilters} className="px-3 py-1.5 rounded-md bg-primary/15 text-primary text-xs font-semibold">
+                    Reset filters
+                  </button>
+                  {filterExchange === 'kalshi' && filterExpiry === '24h' && (
+                    <button onClick={() => setFilterExpiry('7d')} className="px-3 py-1.5 rounded-md bg-surface-2 text-foreground text-xs font-semibold">
+                      Try ≤7D
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           )}
           {sortedSignals.map(sig => {
             const mkt = markets.find(m => m.id === sig.marketId);
