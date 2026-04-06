@@ -19,6 +19,8 @@ import { scannerConfig } from '@/data/liveApi';
 import { buildOutcomeTradeUrl } from '@/lib/marketUrlBuilder';
 import { formatExpiryFilterLabel, getHoursUntil, matchesExpiryFilter } from '@/lib/marketMetadata';
 import { getFreshnessStatus, freshnessColors, SignalDirection, Market } from '@/data/types';
+import { trackTrade } from '@/lib/tradeTracker';
+import { useToast } from '@/hooks/use-toast';
 
 const fmt = (n: number) => `$${n.toFixed(0)}`;
 const fmtC = (n: number) => `${(n * 100).toFixed(1)}¢`;
@@ -68,6 +70,7 @@ const Dashboard = () => {
   const [filterVolume, setFilterVolume] = useState<FilterVolume>('all');
   const [filterExpiry, setFilterExpiry] = useState<FilterExpiry>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('markets');
+  const { toast } = useToast();
 
   const signals = data?.signals ?? [];
   const markets = data?.markets ?? [];
@@ -218,6 +221,33 @@ const Dashboard = () => {
     setFilterExchange('all');
     setFilterVolume('all');
     setFilterExpiry('all');
+  };
+
+  const handleTrackTrade = (
+    market: Market,
+    side: 'YES' | 'NO',
+    score = 0,
+    confidence = 0,
+    setupType = 'Tracked from dashboard',
+  ) => {
+    const entryPrice = side === 'YES' ? market.yesPrice : market.noPrice;
+    const stopPrice = side === 'YES' ? Math.max(0.01, entryPrice - 0.04) : Math.min(0.99, entryPrice + 0.04);
+
+    trackTrade({
+      market,
+      side,
+      entryPrice,
+      size: 25,
+      stopPrice,
+      signalScoreAtEntry: score,
+      confidenceAtEntry: confidence,
+      setupType,
+    });
+
+    toast({
+      title: `${side} trade tracked`,
+      description: 'Saved to Journal as an open paper trade.',
+    });
   };
 
   if (!data && !isLoading && !isFetching) {
@@ -532,6 +562,7 @@ const Dashboard = () => {
                           <div className="flex items-center gap-1">
                             <a href={buildOutcomeTradeUrl(market, 'yes')} target="_blank" rel="noreferrer" className="px-2 py-0.5 rounded text-[10px] font-bold bg-profit/15 text-profit hover:bg-profit/25">YES</a>
                             <a href={buildOutcomeTradeUrl(market, 'no')} target="_blank" rel="noreferrer" className="px-2 py-0.5 rounded text-[10px] font-bold bg-loss/15 text-loss hover:bg-loss/25">NO</a>
+                            <button onClick={() => handleTrackTrade(market, 'YES')} className="px-2 py-0.5 rounded text-[10px] font-bold bg-primary/15 text-primary hover:bg-primary/25">Track</button>
                           </div>
                         </td>
                       </tr>
@@ -695,6 +726,7 @@ const Dashboard = () => {
                           <div className="flex items-center gap-1">
                             <a href={buildOutcomeTradeUrl(market, 'yes')} target="_blank" rel="noreferrer" className="px-2 py-0.5 rounded text-[10px] font-bold bg-profit/15 text-profit hover:bg-profit/25">YES</a>
                             <a href={buildOutcomeTradeUrl(market, 'no')} target="_blank" rel="noreferrer" className="px-2 py-0.5 rounded text-[10px] font-bold bg-loss/15 text-loss hover:bg-loss/25">NO</a>
+                            <button onClick={() => handleTrackTrade(market, sig.direction === 'NO' ? 'NO' : 'YES', sig.score, sig.confidence, sig.setupType)} className="px-2 py-0.5 rounded text-[10px] font-bold bg-primary/15 text-primary hover:bg-primary/25">Track</button>
                           </div>
                         </td>
                       </tr>
