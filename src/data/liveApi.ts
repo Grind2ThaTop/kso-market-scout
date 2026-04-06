@@ -312,7 +312,8 @@ const normalizeRows = (rows: unknown[], fetchedAt: string) => {
 
       const volume24h = pickFirstNumber(
         row.volume24hr, sourceRow.volume24hr, row.volume_24h, sourceRow.volume_24h,
-        row.volume24h, sourceRow.volume24h,
+        row.volume24h, sourceRow.volume24h, row.volume, sourceRow.volume,
+        row.volumeNum, sourceRow.volumeNum,
       ) ?? 0;
       const totalVol = pickFirstNumber(
         row.volumeNum, sourceRow.volumeNum, row.volume, sourceRow.volume,
