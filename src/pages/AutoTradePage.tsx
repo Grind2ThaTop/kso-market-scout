@@ -543,42 +543,6 @@ const AutoTradePage = () => {
         </CardContent>
       </Card>
 
-      {/* Exchange Accounts */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <Card className="border-primary/20">
-          <CardContent className="p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2"><Wallet className="w-4 h-4 text-primary" /><span className="text-sm font-semibold">Kalshi</span></div>
-              {exchangeBalance.lastSynced && <span className="text-[10px] text-muted-foreground">Synced: {exchangeBalance.lastSynced}</span>}
-            </div>
-            {exchangeBalance.available !== null ? (
-              <div className="grid grid-cols-2 gap-2">
-                <div><p className="text-[10px] text-muted-foreground uppercase tracking-wide">Available</p><p className="text-lg font-bold text-foreground">${exchangeBalance.available.toFixed(2)}</p></div>
-                <div><p className="text-[10px] text-muted-foreground uppercase tracking-wide">Total</p><p className="text-lg font-bold text-foreground">${exchangeBalance.total?.toFixed(2) ?? '—'}</p></div>
-                <div><p className="text-[10px] text-muted-foreground uppercase tracking-wide">Positions</p><p className="text-sm font-semibold">{exchangeBalance.livePositions}</p></div>
-                <div><p className="text-[10px] text-muted-foreground uppercase tracking-wide">Orders</p><p className="text-sm font-semibold">{exchangeBalance.liveOrders}</p></div>
-              </div>
-            ) : <p className="text-xs text-muted-foreground">Tap <strong>Sync</strong> to pull live data.</p>}
-            {exchangeBalance.error && <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">{exchangeBalance.error}</div>}
-          </CardContent>
-        </Card>
-        <Card className="border-primary/20">
-          <CardContent className="p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2"><Wallet className="w-4 h-4 text-primary" /><span className="text-sm font-semibold">Polymarket</span></div>
-              {polyBalance.lastSynced && <span className="text-[10px] text-muted-foreground">Synced: {polyBalance.lastSynced}</span>}
-            </div>
-            {polyBalance.available !== null ? (
-              <div className="grid grid-cols-2 gap-2">
-                <div><p className="text-[10px] text-muted-foreground uppercase tracking-wide">Balance</p><p className="text-lg font-bold text-foreground">${polyBalance.available.toFixed(2)}</p></div>
-                <div><p className="text-[10px] text-muted-foreground uppercase tracking-wide">Positions</p><p className="text-sm font-semibold">{polyBalance.livePositions}</p></div>
-                <div><p className="text-[10px] text-muted-foreground uppercase tracking-wide">Open Orders</p><p className="text-sm font-semibold">{polyBalance.liveOrders}</p></div>
-              </div>
-            ) : <p className="text-xs text-muted-foreground">Tap <strong>Sync</strong> to pull live Polymarket data.</p>}
-            {polyBalance.error && <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">{polyBalance.error}</div>}
-          </CardContent>
-        </Card>
-      </div>
 
       {/* Kill Switch */}
       <Card className="border-loss/30">
