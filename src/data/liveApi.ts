@@ -197,9 +197,8 @@ const resolveMarketUrl = (
   );
   if (directUrl.startsWith('http://') || directUrl.startsWith('https://')) return directUrl;
 
-  // For Polymarket, try to build URL from the slug field (used in gamma API)
   if (platform === 'polymarket') {
-    const polySlug = pickFirstString(row.slug, sourceRow.slug, row.conditionSlug, sourceRow.conditionSlug);
+    const polySlug = pickFirstString(row.eventSlug, sourceRow.eventSlug, row.slug, sourceRow.slug, row.conditionSlug, sourceRow.conditionSlug);
     if (polySlug) return `https://polymarket.com/event/${polySlug}`;
   }
 
