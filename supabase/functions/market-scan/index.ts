@@ -9,23 +9,34 @@ const corsHeaders = {
 const GAMMA_API = "https://gamma-api.polymarket.com";
 const KALSHI_BASE = "https://api.elections.kalshi.com/trade-api/v2";
 
+/* ─── Polymarket ─── */
+
 async function fetchPolymarketMarkets() {
   const minEnd = new Date().toISOString().split("T")[0];
   const urls = [
     `${GAMMA_API}/markets?limit=100&active=true&closed=false&archived=false&order=volume&ascending=false&end_date_min=${minEnd}`,
     `${GAMMA_API}/markets?limit=100&active=true&closed=false&archived=false&order=liquidity&ascending=false`,
+    // Sports-specific pulls
+    `${GAMMA_API}/markets?limit=100&active=true&closed=false&archived=false&order=volume&ascending=false&tag=sports`,
+    `${GAMMA_API}/markets?limit=100&active=true&closed=false&archived=false&order=volume&ascending=false&tag=nba`,
+    `${GAMMA_API}/markets?limit=100&active=true&closed=false&archived=false&order=volume&ascending=false&tag=nfl`,
+    `${GAMMA_API}/markets?limit=100&active=true&closed=false&archived=false&order=volume&ascending=false&tag=mlb`,
+    `${GAMMA_API}/markets?limit=100&active=true&closed=false&archived=false&order=volume&ascending=false&tag=soccer`,
+    `${GAMMA_API}/markets?limit=100&active=true&closed=false&archived=false&order=volume&ascending=false&tag=mma`,
   ];
 
   const allMarkets: any[] = [];
-  for (const url of urls) {
+  const fetches = urls.map(async (url) => {
     try {
       const res = await fetch(url);
-      if (!res.ok) continue;
+      if (!res.ok) return [];
       const rows = await res.json();
-      const markets = Array.isArray(rows) ? rows : rows?.data ?? [];
-      allMarkets.push(...markets);
-    } catch { /* next */ }
-  }
+      return Array.isArray(rows) ? rows : rows?.data ?? [];
+    } catch { return []; }
+  });
+
+  const results = await Promise.all(fetches);
+  for (const batch of results) allMarkets.push(...batch);
 
   // Deduplicate
   const seen = new Set<string>();
@@ -78,42 +89,60 @@ async function fetchPolymarketMarkets() {
   });
 }
 
+/* ─── Kalshi ─── */
+
 async function fetchKalshiMarkets() {
   try {
-    // Use events endpoint with nested markets for better data
-    const res = await fetch(`${KALSHI_BASE}/events?limit=100&status=open&with_nested_markets=true`, {
-      headers: { "Content-Type": "application/json", "Accept": "application/json" },
-    });
-    if (!res.ok) {
-      console.error(`Kalshi events API returned ${res.status}`);
-      return [];
-    }
-    const data = await res.json();
-    const events = data.events ?? [];
     const allMarkets: any[] = [];
-    for (const event of events) {
-      const ms = event.markets ?? [];
-      for (const m of ms) {
-        m._eventTitle = event.title;
-        m._eventCategory = event.category;
-        m._seriesTicker = event.series_ticker;
-        allMarkets.push(m);
+    let cursor = "";
+    let pages = 0;
+    const MAX_PAGES = 5; // up to 500 events
+
+    // Paginate through events endpoint to get ALL markets
+    while (pages < MAX_PAGES) {
+      const cursorParam = cursor ? `&cursor=${cursor}` : "";
+      const res = await fetch(
+        `${KALSHI_BASE}/events?limit=100&status=open&with_nested_markets=true${cursorParam}`,
+        { headers: { "Content-Type": "application/json", "Accept": "application/json" } }
+      );
+      if (!res.ok) {
+        console.error(`Kalshi events API returned ${res.status}`);
+        break;
       }
+      const data = await res.json();
+      const events = data.events ?? [];
+      if (events.length === 0) break;
+
+      for (const event of events) {
+        const ms = event.markets ?? [];
+        for (const m of ms) {
+          m._eventTitle = event.title;
+          m._eventCategory = event.category;
+          m._seriesTicker = event.series_ticker;
+        }
+        allMarkets.push(...ms);
+      }
+
+      cursor = data.cursor ?? "";
+      if (!cursor) break;
+      pages++;
     }
 
-    // Kalshi v2 uses _dollars and _fp suffixed fields
+    console.log(`[scan] Kalshi raw markets from events: ${allMarkets.length} (${pages + 1} pages)`);
+
     const parseDollars = (v: any) => Number(String(v ?? "0").replace(/[^0-9.\-]/g, "")) || 0;
 
+    const seen = new Set<string>();
     return allMarkets.filter((m: any) => {
       const ticker = m.ticker ?? "";
+      if (seen.has(ticker)) return false;
+      seen.add(ticker);
       if (ticker.startsWith("KXMVE")) return false;
       const yesBid = parseDollars(m.yes_bid_dollars);
       const yesAsk = parseDollars(m.yes_ask_dollars);
       if (yesBid === 0 && yesAsk === 0) return false;
       const oi = parseDollars(m.open_interest_fp);
       const vol = parseDollars(m.volume_fp);
-      // Relax liquidity filter — Kalshi reports liquidity_dollars as 0 for most markets
-      // Use open_interest or volume instead
       if (oi === 0 && vol === 0) return false;
       const lastPrice = parseDollars(m.last_price_dollars);
       if (lastPrice >= 0.90 || (lastPrice > 0 && lastPrice <= 0.10)) return false;
@@ -162,39 +191,49 @@ async function fetchKalshiMarkets() {
   }
 }
 
+/* ─── Handler ─── */
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
     const url = new URL(req.url);
-    const provider = url.searchParams.get("provider"); // "kalshi", "polymarket", or null for both
+    const provider = url.searchParams.get("provider");
 
     const results: any[] = [];
     const status: Record<string, string> = {};
 
+    const promises: Promise<void>[] = [];
+
     if (!provider || provider === "polymarket") {
-      try {
-        const poly = await fetchPolymarketMarkets();
-        results.push(...poly);
-        status.polymarket = poly.length > 0 ? "connected" : "empty";
-        console.log(`[scan] Polymarket: ${poly.length} markets`);
-      } catch (e) {
-        status.polymarket = "error";
-        console.error("[scan] Polymarket error:", e);
-      }
+      promises.push((async () => {
+        try {
+          const poly = await fetchPolymarketMarkets();
+          results.push(...poly);
+          status.polymarket = poly.length > 0 ? "connected" : "empty";
+          console.log(`[scan] Polymarket: ${poly.length} markets`);
+        } catch (e) {
+          status.polymarket = "error";
+          console.error("[scan] Polymarket error:", e);
+        }
+      })());
     }
 
     if (!provider || provider === "kalshi") {
-      try {
-        const kalshi = await fetchKalshiMarkets();
-        results.push(...kalshi);
-        status.kalshi = kalshi.length > 0 ? "connected" : "empty";
-        console.log(`[scan] Kalshi: ${kalshi.length} markets`);
-      } catch (e) {
-        status.kalshi = "error";
-        console.error("[scan] Kalshi error:", e);
-      }
+      promises.push((async () => {
+        try {
+          const kalshi = await fetchKalshiMarkets();
+          results.push(...kalshi);
+          status.kalshi = kalshi.length > 0 ? "connected" : "empty";
+          console.log(`[scan] Kalshi: ${kalshi.length} markets`);
+        } catch (e) {
+          status.kalshi = "error";
+          console.error("[scan] Kalshi error:", e);
+        }
+      })());
     }
+
+    await Promise.all(promises);
 
     return new Response(JSON.stringify({
       markets: results,
