@@ -6,6 +6,7 @@ export function useMarketScanner() {
     queryKey: ['live-market-scan'],
     queryFn: fetchScanSnapshot,
     staleTime: Infinity,
+    gcTime: 1000 * 60 * 60, // keep in cache for 1 hour
     refetchOnWindowFocus: false,
     refetchOnMount: false,
     retry: 1,
