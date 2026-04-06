@@ -127,6 +127,33 @@ const Dashboard = () => {
     return filtered;
   }, [signals, markets, filterDirection, filterCategory, filterExchange, filterVolume, filterExpiry]);
 
+  const sortedSignals = useMemo(() => {
+    const copy = [...actionableSignals];
+    copy.sort((a, b) => {
+      const marketA = markets.find((m) => m.id === a.marketId);
+      const marketB = markets.find((m) => m.id === b.marketId);
+      const quoteA = quotes.find((q) => q.marketId === a.marketId);
+      const quoteB = quotes.find((q) => q.marketId === b.marketId);
+
+      let result = 0;
+      switch (sortKey) {
+        case 'market': result = (marketA?.ticker ?? '').localeCompare(marketB?.ticker ?? ''); break;
+        case 'platform': result = (marketA?.platform ?? '').localeCompare(marketB?.platform ?? ''); break;
+        case 'direction': result = a.direction.localeCompare(b.direction); break;
+        case 'yesPrice': result = (marketA?.yesPrice ?? 0) - (marketB?.yesPrice ?? 0); break;
+        case 'spread': result = (quoteA?.spread ?? 0) - (quoteB?.spread ?? 0); break;
+        case 'score': result = a.score - b.score; break;
+        case 'confidence': result = a.confidence - b.confidence; break;
+        case 'time': result = timeToHours(a.timeToExpiry) - timeToHours(b.timeToExpiry); break;
+        case 'volume': result = (marketA?.volume24h ?? 0) - (marketB?.volume24h ?? 0); break;
+        case 'rr': result = a.riskReward - b.riskReward; break;
+        default: result = 0;
+      }
+      return sortDirection === 'asc' ? result : -result;
+    });
+    return copy;
+  }, [actionableSignals, markets, quotes, sortDirection, sortKey]);
+
   const yesSignals = useMemo(() => actionableSignals.filter(s => s.direction === 'YES').length, [actionableSignals]);
   const noSignals = useMemo(() => actionableSignals.filter(s => s.direction === 'NO').length, [actionableSignals]);
   const avgEdge = useMemo(() => {
