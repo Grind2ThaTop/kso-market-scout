@@ -7,56 +7,7 @@ const corsHeaders = {
 };
 
 const GAMMA_API = "https://gamma-api.polymarket.com";
-const KALSHI_PUBLIC = "https://api.elections.kalshi.com/trade-api/v2";
-const KALSHI_TRADING = "https://trading-api.kalshi.com/trade-api/v2";
-
-const KALSHI_API_KEY_ID = Deno.env.get("KALSHI_API_KEY_ID");
-const KALSHI_PRIVATE_KEY = Deno.env.get("KALSHI_PRIVATE_KEY");
-
-/* ─── Kalshi Auth (Web Crypto) ─── */
-
-function uint8ToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  for (const b of bytes) binary += String.fromCharCode(b);
-  return btoa(binary);
-}
-
-async function signKalshi(method: string, path: string, body = ""): Promise<Record<string, string> | null> {
-  if (!KALSHI_API_KEY_ID || !KALSHI_PRIVATE_KEY) return null;
-  const timestamp = String(Date.now());
-  const pathWithoutQuery = path.split("?")[0];
-  const signedPath = `/trade-api/v2${pathWithoutQuery}`;
-  const payload = `${timestamp}${method.toUpperCase()}${signedPath}${body}`;
-
-  const pemBody = KALSHI_PRIVATE_KEY
-    .replace(/\\n/g, "\n")
-    .replace(/-----BEGIN (RSA )?PRIVATE KEY-----/g, "")
-    .replace(/-----END (RSA )?PRIVATE KEY-----/g, "")
-    .replace(/\s/g, "");
-  const keyData = Uint8Array.from(atob(pemBody), (c) => c.charCodeAt(0));
-
-  const key = await crypto.subtle.importKey(
-    "pkcs8",
-    keyData,
-    { name: "RSA-PSS", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-
-  const sig = await crypto.subtle.sign(
-    { name: "RSA-PSS", saltLength: 32 },
-    key,
-    new TextEncoder().encode(payload)
-  );
-
-  return {
-    "KALSHI-ACCESS-KEY": KALSHI_API_KEY_ID,
-    "KALSHI-ACCESS-SIGNATURE": uint8ToBase64(new Uint8Array(sig)),
-    "KALSHI-ACCESS-TIMESTAMP": timestamp,
-    "Content-Type": "application/json",
-    "Accept": "application/json",
-  };
-}
+const KALSHI_BASE = "https://api.elections.kalshi.com/trade-api/v2";
 
 /* ─── Polymarket ─── */
 
@@ -72,6 +23,9 @@ async function fetchPolymarketMarkets() {
     `${GAMMA_API}/markets?limit=100&active=true&closed=false&archived=false&order=volume&ascending=false&tag=mlb`,
     `${GAMMA_API}/markets?limit=100&active=true&closed=false&archived=false&order=volume&ascending=false&tag=soccer`,
     `${GAMMA_API}/markets?limit=100&active=true&closed=false&archived=false&order=volume&ascending=false&tag=mma`,
+    `${GAMMA_API}/markets?limit=100&active=true&closed=false&archived=false&order=volume&ascending=false&tag=nhl`,
+    `${GAMMA_API}/markets?limit=100&active=true&closed=false&archived=false&order=volume&ascending=false&tag=tennis`,
+    `${GAMMA_API}/markets?limit=100&active=true&closed=false&archived=false&order=volume&ascending=false&tag=cricket`,
   ];
 
   const allMarkets: any[] = [];
@@ -142,156 +96,98 @@ async function fetchPolymarketMarkets() {
 
 const parseDollars = (v: any) => Number(String(v ?? "0").replace(/[^0-9.\-]/g, "")) || 0;
 
-function mapKalshiMarket(m: any) {
-  const yesBid = parseDollars(m.yes_bid_dollars);
-  const yesAsk = parseDollars(m.yes_ask_dollars);
-  const noBid = parseDollars(m.no_bid_dollars);
-  const noAsk = parseDollars(m.no_ask_dollars);
-  const lastPrice = parseDollars(m.last_price_dollars);
-  const vol = parseDollars(m.volume_fp);
-  const vol24h = parseDollars(m.volume_24h_fp);
-  const oi = parseDollars(m.open_interest_fp);
-  const prevPrice = parseDollars(m.previous_price_dollars);
+async function fetchKalshiMarkets() {
+  try {
+    const allMarkets: any[] = [];
+    let cursor = "";
+    let pages = 0;
+    const MAX_PAGES = 10; // up to 1000 events to reach short-term ones
 
-  return {
-    id: m.ticker ?? m.id,
-    ticker: (m.ticker ?? m.id ?? "").toUpperCase(),
-    title: m.title ?? m._eventTitle ?? "Untitled",
-    platform: "kalshi",
-    marketSlug: m.ticker,
-    eventSlug: m.event_ticker ?? m.series_ticker,
-    seriesSlug: m._seriesTicker ?? m.series_ticker ?? m.event_ticker?.replace(/-[0-9].*$/, ''),
-    category: m._eventCategory ?? m.category ?? m.title ?? "other",
-    endDate: m.close_time ?? m.expiration_time,
-    rules: m.rules_primary ?? "See Kalshi rules.",
-    lastTradePrice: lastPrice,
-    volume: vol24h || vol,
-    volumeNum: vol24h || vol,
-    liquidity: oi,
-    liquidityNum: oi,
-    bestYesBid: yesBid,
-    bestYesAsk: yesAsk,
-    bestNoBid: noBid,
-    bestNoAsk: noAsk,
-    spread: Math.abs(yesAsk - yesBid),
-    oneHourPriceChange: 0,
-    oneDayPriceChange: prevPrice > 0 ? lastPrice - prevPrice : 0,
-    status: m.status ?? "active",
-    open_interest: oi,
-  };
-}
-
-function filterKalshiMarket(m: any, seen: Set<string>): boolean {
-  const ticker = m.ticker ?? "";
-  if (seen.has(ticker)) return false;
-  seen.add(ticker);
-  if (ticker.startsWith("KXMVE")) return false;
-  if (m.status === "finalized" || m.status === "closed") return false;
-  const yesBid = parseDollars(m.yes_bid_dollars);
-  const yesAsk = parseDollars(m.yes_ask_dollars);
-  if (yesBid === 0 && yesAsk === 0) return false;
-  const oi = parseDollars(m.open_interest_fp);
-  const vol = parseDollars(m.volume_fp);
-  if (oi === 0 && vol === 0) return false;
-  const lastPrice = parseDollars(m.last_price_dollars);
-  if (lastPrice >= 0.90 || (lastPrice > 0 && lastPrice <= 0.10)) return false;
-  return true;
-}
-
-async function fetchKalshiPublicMarkets() {
-  const allMarkets: any[] = [];
-  let cursor = "";
-  let pages = 0;
-  const MAX_PAGES = 5;
-
-  while (pages < MAX_PAGES) {
-    const cursorParam = cursor ? `&cursor=${cursor}` : "";
-    const res = await fetch(
-      `${KALSHI_PUBLIC}/events?limit=100&status=open&with_nested_markets=true${cursorParam}`,
-      { headers: { "Content-Type": "application/json", "Accept": "application/json" } }
-    );
-    if (!res.ok) break;
-    const data = await res.json();
-    const events = data.events ?? [];
-    if (events.length === 0) break;
-
-    for (const event of events) {
-      for (const m of (event.markets ?? [])) {
-        m._eventTitle = event.title;
-        m._eventCategory = event.category;
-        m._seriesTicker = event.series_ticker;
-      }
-      allMarkets.push(...(event.markets ?? []));
-    }
-
-    cursor = data.cursor ?? "";
-    if (!cursor) break;
-    pages++;
-  }
-
-  console.log(`[scan] Kalshi public: ${allMarkets.length} raw markets (${pages + 1} pages)`);
-  return allMarkets;
-}
-
-async function fetchKalshiAuthMarkets(): Promise<any[]> {
-  const testHeaders = await signKalshi("GET", "/markets");
-  if (!testHeaders) {
-    console.log("[scan] Kalshi auth: no credentials, skipping");
-    return [];
-  }
-
-  const allMarkets: any[] = [];
-  let cursor = "";
-  let pages = 0;
-  const MAX_PAGES = 5;
-
-  while (pages < MAX_PAGES) {
-    const cursorParam = cursor ? `&cursor=${cursor}` : "";
-    const path = `/markets?limit=200&status=open${cursorParam}`;
-    const authHeaders = await signKalshi("GET", path);
-    if (!authHeaders) break;
-
-    try {
-      const res = await fetch(`${KALSHI_TRADING}${path}`, { headers: authHeaders });
+    while (pages < MAX_PAGES) {
+      const cursorParam = cursor ? `&cursor=${cursor}` : "";
+      const res = await fetch(
+        `${KALSHI_BASE}/events?limit=100&status=open&with_nested_markets=true${cursorParam}`,
+        { headers: { "Content-Type": "application/json", "Accept": "application/json" } }
+      );
       if (!res.ok) {
-        console.error(`[scan] Kalshi auth API ${res.status}: ${await res.text().catch(() => '')}`);
+        console.error(`Kalshi events API returned ${res.status}`);
         break;
       }
       const data = await res.json();
-      const markets = data.markets ?? [];
-      if (markets.length === 0) break;
-      allMarkets.push(...markets);
+      const events = data.events ?? [];
+      if (events.length === 0) break;
+
+      for (const event of events) {
+        const ms = event.markets ?? [];
+        for (const m of ms) {
+          m._eventTitle = event.title;
+          m._eventCategory = event.category;
+          m._seriesTicker = event.series_ticker;
+        }
+        allMarkets.push(...ms);
+      }
+
       cursor = data.cursor ?? "";
       if (!cursor) break;
       pages++;
-    } catch (e) {
-      console.error("[scan] Kalshi auth fetch error:", e);
-      break;
     }
-  }
 
-  console.log(`[scan] Kalshi auth: ${allMarkets.length} markets (${pages + 1} pages)`);
-  return allMarkets;
-}
-
-async function fetchKalshiMarkets() {
-  try {
-    // Fetch from both public (elections) and authenticated (trading) APIs in parallel
-    const [publicMarkets, authMarkets] = await Promise.all([
-      fetchKalshiPublicMarkets(),
-      fetchKalshiAuthMarkets().catch((e) => {
-        console.error("[scan] Kalshi auth failed:", e);
-        return [] as any[];
-      }),
-    ]);
-
-    const combined = [...publicMarkets, ...authMarkets];
-    console.log(`[scan] Kalshi combined: ${combined.length} raw markets`);
+    console.log(`[scan] Kalshi raw markets from events: ${allMarkets.length} (${pages + 1} pages)`);
 
     const seen = new Set<string>();
-    return combined
-      .filter(m => filterKalshiMarket(m, seen))
-      .map(mapKalshiMarket);
+    return allMarkets.filter((m: any) => {
+      const ticker = m.ticker ?? "";
+      if (seen.has(ticker)) return false;
+      seen.add(ticker);
+      if (ticker.startsWith("KXMVE")) return false;
+      if (m.status === "finalized" || m.status === "closed") return false;
+      const yesBid = parseDollars(m.yes_bid_dollars);
+      const yesAsk = parseDollars(m.yes_ask_dollars);
+      if (yesBid === 0 && yesAsk === 0) return false;
+      const oi = parseDollars(m.open_interest_fp);
+      const vol = parseDollars(m.volume_fp);
+      if (oi === 0 && vol === 0) return false;
+      const lastPrice = parseDollars(m.last_price_dollars);
+      if (lastPrice >= 0.90 || (lastPrice > 0 && lastPrice <= 0.10)) return false;
+      return true;
+    }).map((m: any) => {
+      const yesBid = parseDollars(m.yes_bid_dollars);
+      const yesAsk = parseDollars(m.yes_ask_dollars);
+      const noBid = parseDollars(m.no_bid_dollars);
+      const noAsk = parseDollars(m.no_ask_dollars);
+      const lastPrice = parseDollars(m.last_price_dollars);
+      const vol = parseDollars(m.volume_fp);
+      const vol24h = parseDollars(m.volume_24h_fp);
+      const oi = parseDollars(m.open_interest_fp);
+      const prevPrice = parseDollars(m.previous_price_dollars);
+
+      return {
+        id: m.ticker ?? m.id,
+        ticker: (m.ticker ?? m.id ?? "").toUpperCase(),
+        title: m.title ?? m._eventTitle ?? "Untitled",
+        platform: "kalshi",
+        marketSlug: m.ticker,
+        eventSlug: m.event_ticker ?? m.series_ticker,
+        seriesSlug: m._seriesTicker ?? m.series_ticker ?? m.event_ticker?.replace(/-[0-9].*$/, ''),
+        category: m._eventCategory ?? m.category ?? m.title ?? "other",
+        endDate: m.close_time ?? m.expiration_time,
+        rules: m.rules_primary ?? "See Kalshi rules.",
+        lastTradePrice: lastPrice,
+        volume: vol24h || vol,
+        volumeNum: vol24h || vol,
+        liquidity: oi,
+        liquidityNum: oi,
+        bestYesBid: yesBid,
+        bestYesAsk: yesAsk,
+        bestNoBid: noBid,
+        bestNoAsk: noAsk,
+        spread: Math.abs(yesAsk - yesBid),
+        oneHourPriceChange: 0,
+        oneDayPriceChange: prevPrice > 0 ? lastPrice - prevPrice : 0,
+        status: m.status ?? "active",
+        open_interest: oi,
+      };
+    });
   } catch (e) {
     console.error("Kalshi fetch error:", e);
     return [];
