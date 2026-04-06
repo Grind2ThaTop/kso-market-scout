@@ -302,13 +302,59 @@ const Dashboard = () => {
         ))}
       </div>
 
-      {/* Main signals table */}
+      {/* Main signals - card layout on mobile, table on desktop */}
       <div className="glass-card border border-border rounded-lg">
-        <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+        <div className="px-3 md:px-4 py-2.5 md:py-3 border-b border-border flex items-center justify-between">
           <h2 className="text-sm font-semibold">Signals ({sortedSignals.length})</h2>
-          <span className="text-[10px] text-muted-foreground">Click headers to sort · Click market to drill down</span>
+          <span className="text-[10px] text-muted-foreground hidden md:inline">Click headers to sort · Click market to drill down</span>
         </div>
-        <div className="overflow-x-auto">
+
+        {/* Mobile cards */}
+        <div className="md:hidden divide-y divide-border/50">
+          {sortedSignals.length === 0 && (
+            <div className="px-3 py-8 text-center text-muted-foreground text-sm">No signals match current filters.</div>
+          )}
+          {sortedSignals.map(sig => {
+            const mkt = markets.find(m => m.id === sig.marketId);
+            const qt = quotes.find(q => q.marketId === sig.marketId);
+            if (!mkt || !qt) return null;
+            return (
+              <Link key={sig.id} to={`/market/${sig.marketId}`} className="block p-3 hover:bg-surface-2 transition-colors active:bg-surface-2">
+                <div className="flex items-start justify-between gap-2 mb-1.5">
+                  <div className={`flex items-center gap-1 font-bold text-xs ${directionColor(sig.direction)}`}>
+                    {directionIcon(sig.direction)}
+                    <span>{sig.direction}</span>
+                    <span className="ml-1 px-1.5 py-0.5 bg-surface-2 rounded text-[9px] text-muted-foreground font-normal uppercase">{mkt.platform === 'kalshi' ? 'KAL' : 'PM'}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10px]">
+                    <span className={`font-bold ${sig.score >= 70 ? 'text-profit' : sig.score >= 50 ? 'text-warning' : 'text-muted-foreground'}`}>{sig.score}pt</span>
+                    <span className="text-muted-foreground">{sig.confidence}%</span>
+                  </div>
+                </div>
+                <p className="text-xs font-medium text-foreground truncate mb-1.5">{mkt.title}</p>
+                <div className="flex items-center justify-between text-[10px] font-mono">
+                  <span>
+                    <span className="text-profit">{fmtPct(mkt.impliedProbYes)}</span>
+                    <span className="text-muted-foreground">/</span>
+                    <span className="text-loss">{fmtPct(mkt.impliedProbNo)}</span>
+                    <span className="text-muted-foreground ml-1">spread {fmtC(qt.spread)}</span>
+                  </span>
+                  <span className="text-muted-foreground">{sig.timeToExpiry}</span>
+                </div>
+                <div className="flex items-center justify-between text-[10px] font-mono mt-1">
+                  <span>
+                    {(sig.entryZone[0] * 100).toFixed(0)}¢→{(sig.targetPrice * 100).toFixed(0)}¢
+                    <span className="text-loss ml-1">✕{(sig.invalidationPrice * 100).toFixed(0)}¢</span>
+                  </span>
+                  <span className={sig.riskReward >= 1.5 ? 'text-profit' : 'text-muted-foreground'}>R:R {sig.riskReward.toFixed(1)}</span>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+
+        {/* Desktop table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-border text-muted-foreground">
