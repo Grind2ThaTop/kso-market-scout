@@ -527,8 +527,9 @@ function buildSignals(markets: Market[], quotes: QuoteSnapshot[]): Signal[] {
       let sentimentBias: Signal['sentimentBias'] = 'neutral';
       let action: Signal['action'] = 'wait';
 
-      const hasMinLiquidity = market.liquidityScore > 20;
-      const tradableSpread = spreadPct < 0.08;
+      const isSports = market.category === 'sports';
+      const hasMinLiquidity = market.liquidityScore > (isSports ? 8 : 20);
+      const tradableSpread = spreadPct < (isSports ? 0.15 : 0.08);
 
       // YES thesis: sharp money pushing price up + enough room
       const yesSharpScore = (
