@@ -153,10 +153,6 @@ async function fetchKalshiMarkets() {
         open_interest: oi,
       };
     });
-        status: m.status ?? "open",
-        open_interest: m.open_interest ?? 0,
-      };
-    });
   } catch (e) {
     console.error("Kalshi fetch error:", e);
     return [];
